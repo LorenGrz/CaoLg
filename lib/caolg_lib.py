@@ -131,9 +131,12 @@ def build_bar(session, ctx_pct, usage, colors, clear_at=30):
     use = []
     for p in (usage or {}).get("providers", []):
         name = USAGE_SHORT.get(p["agent"], p["agent"])
+        if p.get("logged_in") is False:  # el líder no lo usa hasta que Loren se loguee
+            use.append(f"#[fg={muted},strikethrough]{name}#[nostrikethrough] sin login#[fg={fg}]")
+            continue
         cost = "" if not p.get("cost_usd") else f" ${p['cost_usd']:.2f}"
         use.append(f"{name} {human(p.get('tokens'))}{cost}")
     usage_txt = " · ".join(use) if use else "usage n/d"
 
     sep = f"#[fg={muted}] │ "
-    return f"#[fg={fg}] agentes: {left}{sep}{ctx}{sep}#[fg={muted}]{usage_txt} "
+    return f"#[fg={fg}] agentes: {left}{sep}{ctx}{sep}#[fg={fg}]{usage_txt} "

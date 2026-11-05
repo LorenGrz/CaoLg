@@ -73,6 +73,13 @@ class TestCaolg(unittest.TestCase):
         self.assertIn(f"#[fg={c['yellow']}]Opus ctx 30%", bar(30))
         self.assertIn(f"#[fg={c['red']}]Opus ctx 40%", bar(40))
 
+    def test_bar_marks_providers_without_login(self):
+        usage = {"providers": [{"agent": "codex", "tokens": 0, "cost_usd": 0.0, "logged_in": False},
+                               {"agent": "claude", "tokens": 10, "cost_usd": 0.0, "logged_in": True}]}
+        bar = L.build_bar({"terminals": []}, None, usage, L.DEFAULT_COLORS)
+        self.assertIn("codex#[nostrikethrough] sin login", bar)
+        self.assertIn("claude 10", bar)
+
     def test_pane_label(self):
         self.assertEqual(L.pane_label({"id": "a"}, "a"), "Opus · líder")
         self.assertEqual(L.pane_label({"id": "b", "provider": "codex", "agent_profile": "codex-dev"}, "a"),

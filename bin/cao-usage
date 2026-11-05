@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""cao-usage: uso de tokens/costo por suscripción, leído de disco vía ccusage.
+"""cao-usage: uso de tokens/costo y estado de login por suscripción.
 
-  cao-usage [--since YYYYMMDD] [--json]
+  cao-usage [--since YYYYMMDD] [--json] [--refresh-auth]
 
-Sin --since usa hoy. El % de cupo no lo expone ninguna CLI de forma fiable, así que
-`quota_pct_used` es null salvo que lo fuerces con CAO_USAGE_OVERRIDE (para probar la rotación):
+Sin --since usa hoy. Login (cacheado 5 min en ~/.cache/caolg/auth.json):
+  claude   -> `claude auth status`        codex    -> `codex login status`
+  opencode -> `opencode auth list`        copilot / antigravity -> no tienen comando de estado:
+  se toman como logueados si hubo uso en los últimos 7 días.
+Forzar a mano en ~/.config/caolg/auth.toml, p. ej.:  copilot = true   codex = false
+`quota_pct_used` es null (ninguna CLI expone el % de cupo); para probar la rotación:
   CAO_USAGE_OVERRIDE='{"codex": 95}' cao-usage --json
 """
 import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
+import time
+import tomllib
+from pathlib import Path
 
 # agente de ccusage -> worker de CAO
 AGENTS = {
@@ -20,8 +28,26 @@ AGENTS = {
     "codex": "codex-dev",
     "antigravity": "gemini-dev",
     "opencode": "opencode-dev",
-    "copilot": "copilot-reviewer",
+    "copilot": "copilot-dev",
 }
+LOGIN_HINT = {
+    "claude": "claude  (y /login)",
+    "codex": "codex login",
+    "antigravity": "agy  (abrirlo una vez e iniciar sesión con Google)",
+    "opencode": "opencode auth login",
+    "copilot": "copilot login",
+}
+AUTH_CACHE = Path.home() / ".cache/caolg/auth.json"
+AUTH_OVERRIDE = Path.home() / ".config/caolg/auth.toml"
+AUTH_TTL = 300
+
+
+def run(cmd, timeout=30):
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return out.returncode, re.sub(r"\x1b\[[0-9;]*m", "", out.stdout + out.stderr)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None, ""
 
 
 def query(agent, since):
@@ -45,10 +71,57 @@ def query(agent, since):
     return tokens, cost, "ok"
 
 
+def check_login(agent):
+    """(logged_in: True/False/None, fuente). Nunca lee tokens: solo estado o evidencia de uso."""
+    if agent == "claude":
+        rc, out = run(["claude", "auth", "status"])
+        if rc is None:
+            return None, "claude no responde"
+        return bool(re.search(r'"loggedIn"\s*:\s*true', out)), "claude auth status"
+    if agent == "codex":
+        rc, out = run(["codex", "login", "status"])
+        if rc is None:
+            return None, "codex no responde"
+        return ("not logged in" not in out.lower() and rc == 0), "codex login status"
+    if agent == "opencode":
+        rc, out = run(["opencode", "auth", "list"])
+        if rc is None:
+            return None, "opencode no responde"
+        return (len(re.findall(r"\bstored\b", out)) > 0), "opencode auth list"
+    # copilot / antigravity: evidencia de uso reciente
+    week = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y%m%d")
+    tokens, _, status = query(agent, week)
+    if status != "ok":
+        return None, "sin datos"
+    return (bool(tokens) or None), "uso en los últimos 7 días"
+
+
+def login_status(refresh=False):
+    cache = {}
+    try:
+        cache = json.loads(AUTH_CACHE.read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+    if refresh or time.time() - cache.get("ts", 0) > AUTH_TTL:
+        cache = {"ts": time.time(), "agents": {a: list(check_login(a)) for a in AGENTS}}
+        AUTH_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        AUTH_CACHE.write_text(json.dumps(cache))
+    result = {a: tuple(v) for a, v in cache["agents"].items()}
+    try:
+        with open(AUTH_OVERRIDE, "rb") as f:
+            for a, v in tomllib.load(f).items():
+                if a in AGENTS and isinstance(v, bool):
+                    result[a] = (v, "forzado en auth.toml")
+    except (OSError, tomllib.TOMLDecodeError):
+        pass
+    return result
+
+
 def main():
-    ap = argparse.ArgumentParser(description="Uso por suscripción (vía ccusage)")
+    ap = argparse.ArgumentParser(description="Uso y login por suscripción")
     ap.add_argument("--since", default=datetime.date.today().strftime("%Y%m%d"))
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--refresh-auth", action="store_true")
     args = ap.parse_args()
 
     try:
@@ -56,12 +129,17 @@ def main():
     except json.JSONDecodeError:
         sys.exit("CAO_USAGE_OVERRIDE no es JSON válido")
 
+    logins = login_status(args.refresh_auth)
     rows = []
     for agent, worker in AGENTS.items():
         tokens, cost, status = query(agent, args.since)
+        logged, source = logins.get(agent, (None, "sin datos"))
         rows.append({
             "agent": agent,
             "worker": worker,
+            "logged_in": logged,
+            "auth_source": source,
+            "login_hint": None if logged else LOGIN_HINT[agent],
             "tokens": tokens,
             "cost_usd": None if cost is None else round(cost, 2) + 0.0,  # +0.0 evita "-0.00"
             "quota_pct_used": override.get(agent),
@@ -73,12 +151,18 @@ def main():
         return
 
     print(f"Uso desde {args.since}  (cupo %: n/d salvo override)")
-    print(f"{'agente':<12}{'worker':<18}{'tokens':>14}{'costo USD':>11}{'cupo %':>8}  estado")
+    print(f"{'agente':<12}{'worker':<17}{'login':<7}{'tokens':>14}{'costo USD':>11}{'cupo %':>8}  estado")
     for r in rows:
         tok = "n/d" if r["tokens"] is None else f"{r['tokens']:,}"
         cost = "n/d" if r["cost_usd"] is None else f"{r['cost_usd']:.2f}"
         pct = "n/d" if r["quota_pct_used"] is None else str(r["quota_pct_used"])
-        print(f"{r['agent']:<12}{r['worker']:<18}{tok:>14}{cost:>11}{pct:>8}  {r['status']}")
+        login = {True: "sí", False: "no", None: "?"}[r["logged_in"]]
+        print(f"{r['agent']:<12}{r['worker']:<17}{login:<7}{tok:>14}{cost:>11}{pct:>8}  {r['status']}")
+    missing = [r for r in rows if not r["logged_in"]]
+    if missing:
+        print("\nSin login (el líder no los usa):")
+        for r in missing:
+            print(f"  {r['agent']:<12} → {r['login_hint']}")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,9 @@ CAO 2.5.4 (pineado, Python, `uv tool`), tmux ≥ 3.3, `ccusage` para el uso, bas
 caolg server   # en una terminal aparte (reiniciarlo después de install.sh)
 ```
 
-Cada CLI tiene que tener su sesión iniciada antes (`claude`, `copilot login`, `codex login`, `agy`, `opencode`).
+El líder **solo usa los providers donde tenés sesión iniciada**. `caolg usage` muestra la columna `login` y, para los que faltan, cómo loguearte (`codex login`, `copilot login`, `opencode auth login`, abrir `agy`). Se refresca cada 5 min (o `cao-usage --refresh-auth`), así que al loguearte se suma solo. En la barra, los que no tienen login aparecen tachados.
+
+Detección: `claude auth status`, `codex login status`, `opencode auth list`; Copilot y agy no tienen comando de estado, así que cuentan como logueados si hubo uso en los últimos 7 días. Para forzarlo: `~/.config/caolg/auth.toml` con `copilot = true` o `codex = false`.
 
 ## Uso
 

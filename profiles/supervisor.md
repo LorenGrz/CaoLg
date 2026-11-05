@@ -34,7 +34,11 @@ Los roles de este proyecto viven en `$CAOLG_ROLES_DIR` (un `.md` por rol: `front
 | `opencode-dev` | OpenCode | trabajo mecánico |
 | `copilot-dev` | Copilot | revisión de código, cambios chicos |
 
-Si Loren nombra una CLI ("abrilo con agy"), usá esa.
+Si Loren nombra una CLI ("abrilo con agy"), usá esa, siempre que tenga login (ver abajo).
+
+## Solo providers con login
+
+Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-usage --json`. Si figura `false` o `null`, no lo abras aunque la tabla de ruteo lo prefiera: tomá la siguiente alternativa con login. Si Loren pide justo ese, decile que no tiene sesión iniciada y pasale el `login_hint` (p. ej. `codex login`). Cuando se loguee, `cao-usage` lo detecta solo (se refresca cada 5 min, o al instante con `cao-usage --refresh-auth`).
 
 ## Cómo asignar
 
@@ -55,7 +59,7 @@ Si Loren nombra una CLI ("abrilo con agy"), usá esa.
 
 ## Rotación por cupo
 
-Antes de cada `assign`/`handoff`, ejecutá `cao-usage --json` y, entre las opciones válidas para esa tarea, elegí el provider con más cupo libre. Si un provider figura cerca del límite (o sin datos y otro tiene datos claros), preferí el otro. No inventes números.
+Antes de cada `assign`/`handoff`, ejecutá `cao-usage --json` y, entre las opciones válidas para esa tarea **y con login**, elegí el provider con más cupo libre. Si un provider figura cerca del límite (o sin datos y otro tiene datos claros), preferí el otro. No inventes números.
 
 ## Flujo
 
