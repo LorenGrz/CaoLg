@@ -25,13 +25,16 @@ cao-usage                               # uso por suscripción (tokens / costo)
 cao-wt --rm ~/projects/roadmap mi-tarea # cierra la sesión y borra el worktree
 ```
 
-Dentro de la sesión tmux: `Ctrl+b w` lista las ventanas (supervisor + workers). El supervisor reparte con `assign` (asíncrono) y `handoff` (bloqueante) entre `claude-dev`, `codex-dev`, `gemini-dev`, `opencode-dev` y `copilot-reviewer`, rotando según `cao-usage --json`.
+Una terminal por proyecto: `cao-open ~/projects/<repo> <slug>` abre una ventana nueva con su sesión `cao-<slug>` (si ya existe, se adjunta). La barra de tmux muestra la carpeta, la rama y los atajos; el líder (Opus) se presenta al arrancar (`CAO_WT_GREET=0` lo desactiva).
+
+Atajos (de `~/.config/tmux/tmux.conf`): `Alt+1..9` ventana, `Alt+←/→` anterior/siguiente, `Alt+↑/↓` otro proyecto (sesión), `Ctrl+b w` lista. El supervisor reparte con `assign` (asíncrono) y `handoff` (bloqueante) entre `claude-dev`, `codex-dev`, `gemini-dev`, `opencode-dev` y `copilot-reviewer`, rotando según `cao-usage --json`.
 
 ## Permisos por provider
 
 | Worker | Provider | Cómo se contiene |
 |---|---|---|
-| supervisor, claude-dev | `claude_code` | `permissionMode: acceptEdits` (sigue preguntando por comandos) |
+| supervisor | `claude_code` | sin confirmaciones (`--dangerously-skip-permissions`), límites en su prompt, aislado en el worktree |
+| claude-dev | `claude_code` | `permissionMode: acceptEdits` (sigue preguntando por comandos) |
 | codex-dev | `codex` | `codexProfile: cao-safe` (sin `--yolo`; `approval_policy=never` + `workspace-write`) |
 | copilot-reviewer | `copilot_cli` | CAO fuerza `--allow-all --autopilot`: solo en worktree descartable |
 | gemini-dev | `antigravity_cli` | CAO fuerza bypass de permisos: solo en worktree descartable |

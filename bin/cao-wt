@@ -31,4 +31,20 @@ if [[ ! -d "$wt" ]]; then
   git -C "$repo" worktree add "$wt" -b "$branch"
 fi
 cd "$wt"
-exec cao launch --agents "$profile" --session-name "$slug"
+
+# En segundo plano: cuando exista la sesión, mostrar carpeta/rama/atajos en su barra (solo esta sesión,
+# no toca ~/.config/tmux) y pedirle al líder que se presente. CAO_WT_GREET=0 desactiva el saludo.
+(
+  for _ in $(seq 60); do tmux has-session -t "cao-$slug" 2>/dev/null && break; sleep 1; done
+  tmux set -t "cao-$slug" status-right-length 140
+  tmux set -t "cao-$slug" status-right "#[fg=yellow]$wt #[fg=green]($branch) #[fg=brightblack]Alt+1..9 · Alt+←/→ · Alt+↑/↓ proyecto "
+  if [[ "${CAO_WT_GREET:-1}" == 1 ]]; then
+    sleep 5
+    cao session send "cao-$slug" --async \
+      "Presentate en 3 líneas: en qué carpeta y rama estás, y qué workers podés abrir. Después esperá mi tarea." \
+      >/dev/null 2>&1
+  fi
+) </dev/null >/dev/null 2>&1 &
+
+# --auto-approve solo salta el "Proceed? [Y/n]" de CAO; no cambia la política de herramientas (nunca --yolo).
+exec cao launch --agents "$profile" --session-name "$slug" --auto-approve

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# cao-open <repo> <slug> [perfil]: abre una terminal nueva para ese proyecto/worktree con su sesión CAO.
+# Una terminal por proyecto; entre proyectos también podés saltar con Alt+↑/↓ (cambia de sesión tmux).
+set -euo pipefail
+[[ $# -ge 2 ]] || { sed -n '2,3p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+repo=$(cd "$1" && pwd); slug=$2; profile=${3:-supervisor}
+
+if tmux has-session -t "cao-$slug" 2>/dev/null; then
+  # Ya existe: abrir una terminal adjunta a esa sesión en vez de crear otra.
+  setsid -f xdg-terminal-exec tmux attach -t "cao-$slug" >/dev/null 2>&1
+else
+  setsid -f xdg-terminal-exec bash -lc \
+    "export PATH=\"\$HOME/.local/bin:\$PATH\"; cao-wt '$repo' '$slug' '$profile'; echo; echo '[cao-wt terminó] Enter para cerrar'; read" \
+    >/dev/null 2>&1
+fi
