@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# cao-ls: sesiones activas de CAO y worktrees de agentes.
+set -uo pipefail
+echo "== Sesiones CAO =="
+cao session list 2>/dev/null || echo "(cao-server no responde; levantalo con: cao-server)"
+echo
+echo "== tmux =="
+tmux ls 2>/dev/null | grep '^cao-' || echo "(sin sesiones tmux cao-*)"
+echo
+echo "Web UI: http://localhost:9889"

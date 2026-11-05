@@ -1,0 +1,4 @@
+# Perfil de Codex para CAO: sin --yolo, sin prompts de aprobación (CAO no puede responderlos).
+# Se enlaza a ~/.codex/cao-safe.config.toml (ver install.sh).
+approval_policy = "never"
+sandbox_mode = "workspace-write"

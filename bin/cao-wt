@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# cao-wt: un worktree aislado por sesión de CAO.
+#   cao-wt <repo> <slug> [perfil]   crea worktree + rama agent/<slug> y lanza CAO adentro (default: supervisor)
+#   cao-wt --rm <repo> <slug>       cierra la sesión y borra el worktree
+set -euo pipefail
+
+usage() { sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
+
+rm_mode=0
+if [[ "${1:-}" == "--rm" ]]; then rm_mode=1; shift; fi
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage 0
+[[ $# -ge 2 ]] || usage
+
+repo=$(cd "$1" && git rev-parse --show-toplevel)
+slug=$2
+profile=${3:-supervisor}
+wt="$(dirname "$repo")/$(basename "$repo")-wt/$slug"
+branch="agent/$slug"
+
+if [[ $rm_mode -eq 1 ]]; then
+  cao shutdown --session "cao-$slug" || echo "aviso: no había sesión cao-$slug" >&2
+  git -C "$repo" worktree remove "$wt"   # falla si hay cambios sin commitear: es a propósito
+  echo "worktree $wt eliminado. La rama $branch se conserva (borrala con: git -C $repo branch -d $branch)"
+  exit 0
+fi
+
+curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null \
+  || { echo "cao-server no responde en :9889. Levantalo en otra terminal: cao-server" >&2; exit 1; }
+
+if [[ ! -d "$wt" ]]; then
+  git -C "$repo" worktree add "$wt" -b "$branch"
+fi
+cd "$wt"
+exec cao launch --agents "$profile" --session-name "$slug"

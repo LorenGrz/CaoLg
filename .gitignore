@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+*secret*.json
+*.log
+tmp/
+.cache/
+__pycache__/
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+node_modules/

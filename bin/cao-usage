@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""cao-usage: uso de tokens/costo por suscripción, leído de disco vía ccusage.
+
+  cao-usage [--since YYYYMMDD] [--json]
+
+Sin --since usa hoy. El % de cupo no lo expone ninguna CLI de forma fiable, así que
+`quota_pct_used` es null salvo que lo fuerces con CAO_USAGE_OVERRIDE (para probar la rotación):
+  CAO_USAGE_OVERRIDE='{"codex": 95}' cao-usage --json
+"""
+import argparse
+import datetime
+import json
+import os
+import subprocess
+import sys
+
+# agente de ccusage -> worker de CAO
+AGENTS = {
+    "claude": "claude-dev",
+    "codex": "codex-dev",
+    "antigravity": "gemini-dev",
+    "opencode": "opencode-dev",
+    "copilot": "copilot-reviewer",
+}
+
+
+def query(agent, since):
+    """Devuelve (tokens, cost, status). Lo que no se pueda leer queda en None, nunca inventado."""
+    try:
+        out = subprocess.run(
+            ["ccusage", agent, "daily", "--json", "--since", since],
+            capture_output=True, text=True, timeout=90,
+        )
+        if out.returncode != 0:
+            return None, None, "error"
+        totals = json.loads(out.stdout).get("totals") or {}
+    except FileNotFoundError:
+        return None, None, "sin-ccusage"
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None, None, "error"
+    tokens = totals.get("totalTokens")
+    cost = totals.get("totalCost", totals.get("costUSD"))
+    if tokens is None and cost is None:
+        return None, None, "n/d"
+    return tokens, cost, "ok"
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Uso por suscripción (vía ccusage)")
+    ap.add_argument("--since", default=datetime.date.today().strftime("%Y%m%d"))
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    try:
+        override = json.loads(os.environ.get("CAO_USAGE_OVERRIDE", "{}") or "{}")
+    except json.JSONDecodeError:
+        sys.exit("CAO_USAGE_OVERRIDE no es JSON válido")
+
+    rows = []
+    for agent, worker in AGENTS.items():
+        tokens, cost, status = query(agent, args.since)
+        rows.append({
+            "agent": agent,
+            "worker": worker,
+            "tokens": tokens,
+            "cost_usd": None if cost is None else round(cost, 2) + 0.0,  # +0.0 evita "-0.00"
+            "quota_pct_used": override.get(agent),
+            "status": status,
+        })
+
+    if args.json:
+        print(json.dumps({"since": args.since, "providers": rows}, indent=2))
+        return
+
+    print(f"Uso desde {args.since}  (cupo %: n/d salvo override)")
+    print(f"{'agente':<12}{'worker':<18}{'tokens':>14}{'costo USD':>11}{'cupo %':>8}  estado")
+    for r in rows:
+        tok = "n/d" if r["tokens"] is None else f"{r['tokens']:,}"
+        cost = "n/d" if r["cost_usd"] is None else f"{r['cost_usd']:.2f}"
+        pct = "n/d" if r["quota_pct_used"] is None else str(r["quota_pct_used"])
+        print(f"{r['agent']:<12}{r['worker']:<18}{tok:>14}{cost:>11}{pct:>8}  {r['status']}")
+
+
+if __name__ == "__main__":
+    main()
