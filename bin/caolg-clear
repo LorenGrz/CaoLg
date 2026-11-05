@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# caolg-clear <session>: Opus guarda su estado en $CAOLG_STATE, se hace /clear y lo relee.
+# caolg-clear <session>: Opus guarda su estado en $CAOLG_STATE, se hace /clear y solo se le recuerdan
+# los roles de la carpeta (no se le pide retomar: lo decidís vos).
 # Lo dispara Alt+c (manual) o caolg-watch cuando el contexto pasa CAOLG_CLEAR_AT (automático).
 set -uo pipefail
 s=$1
@@ -7,7 +8,8 @@ mkdir -p ~/.cache/caolg
 exec 9>~/.cache/caolg/"$s".clear.lock
 flock -n 9 || { tmux display -t "$s" "caolg: ya hay un /clear en curso"; exit 0; }
 
-state=$(tmux show -v -t "$s" @caolg_state 2>/dev/null)
+state=$(tmux show -v -t "=$s" @caolg_state 2>/dev/null)
+roles=$(tmux show -v -t "=$s" @caolg_roles 2>/dev/null)
 [[ -n "$state" ]] || { tmux display -t "$s" "caolg: la sesión no tiene @caolg_state"; exit 1; }
 mkdir -p "$(dirname "$state")"
 
@@ -19,14 +21,18 @@ cao session send "$s" --timeout 300 \
 [[ -s "$state" ]] || { tmux display -t "$s" "caolg: $state quedó vacío; cancelo el /clear"; exit 1; }
 
 # Pane de Opus: el que caolg-watch etiquetó como líder (fallback: primer pane de la ventana caolg).
-pane=$(tmux list-panes -s -t "$s" -F '#{pane_id} #{@caolg_label}' | awk '/Opus/ {print $1; exit}')
+pane=$(tmux list-panes -s -t "=$s" -F '#{pane_id} #{@caolg_label}' | awk '/Opus/ {print $1; exit}')
 pane=${pane:-$s:caolg.1}
 tmux send-keys -t "$pane" "/clear"
 sleep 0.5
 tmux send-keys -t "$pane" Enter
+# Desde acá el contexto se mide solo en transcripts nuevos: evita que el /clear automático
+# se vuelva a disparar mirando el transcript viejo.
+tmux set -t "=$s" @caolg_cleared_at "$(date +%s)"
 sleep 3
 
+list=$(ls "$roles" 2>/dev/null | sed -n 's/\.md$//p' | paste -sd, - | sed 's/,/, /g')
 cao session send "$s" --async \
-  "Retomá: leé $state, resumime en 2 líneas dónde estábamos y seguí con los próximos pasos. Tus roles por carpeta siguen en \$CAOLG_ROLES_DIR." \
+  "Tus roles por carpeta están en $roles${list:+ ($list)}. Respondé solo OK." \
   >/dev/null 2>&1
-tmux display -t "$s" "caolg: contexto de Opus limpio, retomando desde $state"
+tmux display -t "$s" "caolg: contexto de Opus limpio (estado guardado en $state)"

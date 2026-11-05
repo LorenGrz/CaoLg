@@ -80,6 +80,50 @@ class TestCaolg(unittest.TestCase):
         self.assertIn("codex#[nostrikethrough] sin login", bar)
         self.assertIn("claude 10", bar)
 
+    def test_claude_costs_for_path_sums_by_model_only_for_that_cwd(self):
+        cwd = "/home/loren/projects/web-wt/demo"
+        enc = L.transcript_dir(cwd).name
+        data = {"sessions": [
+            {"projectPath": enc, "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 1.0},
+                                                     {"modelName": "claude-sonnet-5-5", "cost": 0.25}]},
+            {"projectPath": enc, "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 0.5}]},
+            {"projectPath": "-otra-carpeta", "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 9}]},
+        ]}
+        self.assertEqual(L.claude_costs_for_path(data, cwd), {"opus": 1.5, "sonnet": 0.25})
+        self.assertEqual(L.claude_costs_for_path(None, cwd), {})
+
+    def test_cost_since(self):
+        data = {"sessions": [{"lastActivity": "2026-11-05T18:00:00Z", "totalCost": 0.1},
+                             {"lastActivity": "2026-11-05T10:00:00Z", "totalCost": 5},
+                             {"lastActivity": "2026-11-05T19:00:00Z", "costUSD": 0.2}]}
+        self.assertAlmostEqual(L.cost_since(data, "2026-11-05T17:00:00"), 0.3)
+
+    def test_session_cost_text_marks_approx(self):
+        txt = L.session_cost_text({"opus": (1.234, True), "agy": (0.06, False), "codex": (0.0, False)},
+                                  L.DEFAULT_COLORS)
+        self.assertIn("sesión $1.29", txt)
+        self.assertIn("opus1.23 · agy≈0.06", txt)
+        self.assertNotIn("codex", txt)
+
+    def test_opus_context_ignores_transcripts_before_clear(self):
+        import os
+        import time
+        with tempfile.TemporaryDirectory() as home:
+            old_home = os.environ.get("HOME")
+            os.environ["HOME"] = home
+            try:
+                L_home = L.transcript_dir("/x/y")  # usa Path.home() en cada llamada
+                L_home.mkdir(parents=True)
+                f = L_home / "a.jsonl"
+                f.write_text(json.dumps({"message": {"model": "claude-opus-5-5", "usage": {"input_tokens": 500}}}))
+                past = time.time() - 100
+                os.utime(f, (past, past))
+                self.assertEqual(L.opus_context_tokens("/x/y"), 500)
+                self.assertEqual(L.opus_context_tokens("/x/y", since=time.time() - 10), 0)
+            finally:
+                if old_home is not None:
+                    os.environ["HOME"] = old_home
+
     def test_pane_label(self):
         self.assertEqual(L.pane_label({"id": "a"}, "a"), "Opus · líder")
         self.assertEqual(L.pane_label({"id": "b", "provider": "codex", "agent_profile": "codex-dev"}, "a"),

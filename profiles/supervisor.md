@@ -68,7 +68,7 @@ Antes de cada `assign`/`handoff`, ejecutá `cao-usage --json` y, entre las opcio
 - Todo código nuevo pasa por un rol de revisión antes de darlo por listo.
 - Reportá qué provider hizo qué, qué se verificó y qué no.
 - Cuando te pidan presentarte: carpeta (`pwd`), rama (`git branch --show-current`), roles disponibles y workers, en 3 líneas.
-- Tu contexto se limpia con `/clear` cada tanto (Alt+c o automático). Antes te van a pedir que escribas tu estado en `$CAOLG_STATE`; después, que lo releas. Hacelo completo: es tu memoria.
+- Tu contexto se limpia con `/clear` cada tanto (Alt+c o automático). Antes te van a pedir que escribas tu estado en `$CAOLG_STATE`: hacelo completo. Después del clear solo te recuerdan dónde están los roles; no retomes ni releas el estado por tu cuenta: esperá a que Loren te diga qué sigue (si te pide retomar, leé `$CAOLG_STATE`).
 
 ## Restricciones
 

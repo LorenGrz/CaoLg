@@ -62,7 +62,41 @@ def cached_usage():
         return None
 
 
-def paint(s, session, colors):
+# provider de CAO -> agente de ccusage (para el costo por sesión)
+CCUSAGE_AGENT = {"codex": "codex", "antigravity_cli": "antigravity",
+                 "opencode_cli": "opencode", "copilot_cli": "copilot"}
+
+
+def ccusage_sessions(agent, since_day):
+    try:
+        out = subprocess.run(["ccusage", agent, "session", "--json", "--since", since_day],
+                             capture_output=True, text=True, timeout=90)
+        return json.loads(out.stdout)
+    except Exception:
+        return None
+
+
+def session_costs(s, session):
+    """{nombre: (usd, exacto)}: Claude por carpeta (exacto); el resto desde que se abrió la sesión (≈)."""
+    terms = session.get("terminals", [])
+    if not terms:
+        return {}
+    created = tmux("display", "-p", "-t", f"={s}", "#{session_created}").stdout.strip()
+    start = float(created) if created.isdigit() else time.time()
+    since_day = time.strftime("%Y%m%d", time.localtime(start))
+    since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(start))
+    costs = {}
+    claude = L.claude_costs_for_path(ccusage_sessions("claude", since_day), terms[0].get("working_directory", ""))
+    for model, usd in claude.items():
+        costs[model] = (usd, True)
+    for prov in {t.get("provider") for t in terms[1:]}:
+        agent = CCUSAGE_AGENT.get(prov)
+        if agent:
+            costs[L.provider_short(prov)] = (L.cost_since(ccusage_sessions(agent, since_day), since_iso), False)
+    return costs
+
+
+def paint(s, session, colors, opus_cost=None):
     """Borde de cada pane y tab de cada ventana con el color de su provider."""
     terms = session.get("terminals", [])
     if not terms:
@@ -76,6 +110,8 @@ def paint(s, session, colors):
     windows = set(tmux("list-windows", "-t", s, "-F", "#W").stdout.split())
     for t in terms:
         label = L.pane_label(t, conductor)
+        if t["id"] == conductor and opus_cost is not None:
+            label = f"{label} · ${opus_cost:.2f}"
         color = colors["accent"] if t["id"] == conductor else L.provider_color(t.get("provider"), colors)
         pid = panes.get(t["tmux_window"])
         if pid:
@@ -94,22 +130,34 @@ def tick(s, state):
     if session is None:
         return
     colors = L.load_colors()
-    paint(s, session, colors)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    costs_file = CACHE / f"{s}.costs.json"
 
     now = time.time()
     if now - state.get("usage_ts", 0) >= USAGE_EVERY:
         state["usage"], state["usage_ts"] = fetch_usage(), now
+        state["costs"] = session_costs(s, session)
+        costs_file.write_text(json.dumps(state["costs"]))
+    if "costs" not in state:  # --once: reusar el último cálculo
+        try:
+            state["costs"] = {k: tuple(v) for k, v in json.loads(costs_file.read_text()).items()}
+        except (OSError, json.JSONDecodeError):
+            state["costs"] = {}
+    opus = state["costs"].get("opus")
+    paint(s, session, colors, opus[0] if opus else None)
 
     terms = session.get("terminals", [])
     ctx_pct = None
     if terms:
-        tokens = L.opus_context_tokens(terms[0].get("working_directory", ""))
+        cleared = tmux("show", "-v", "-t", f"={s}", "@caolg_cleared_at").stdout.strip()
+        since = float(cleared) if cleared.replace(".", "", 1).isdigit() else 0.0
+        tokens = L.opus_context_tokens(terms[0].get("working_directory", ""), since)
         if tokens is not None:
             ctx_pct = min(100, tokens * 100 // CTX_WINDOW)
 
-    CACHE.mkdir(parents=True, exist_ok=True)
     usage = state.get("usage") or cached_usage()
-    (CACHE / f"{s}.bar").write_text(L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT))
+    (CACHE / f"{s}.bar").write_text(
+        L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT, state["costs"]))
 
     idle = terms and terms[0].get("status") in ("idle", "completed")
     if (CLEAR_AT and ctx_pct is not None and ctx_pct >= CLEAR_AT and idle
@@ -125,13 +173,23 @@ def main():
     s = sys.argv[1]
     state = {}
     if "--once" in sys.argv:
-        state["usage_ts"] = time.time()  # --once no recalcula el usage (lento); solo repinta
+        state["usage_ts"] = time.time()  # --once no recalcula usage ni costos (lento); solo repinta
         tick(s, state)
+        return
+    # Un solo watcher por sesión: si ya hay uno (relanzamiento), este se va. Dos watchers duplicaban
+    # el /clear automático.
+    import fcntl
+    CACHE.mkdir(parents=True, exist_ok=True)
+    lock = open(CACHE / f"{s}.watch.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
         return
     while session_alive(s):
         tick(s, state)
         time.sleep(TICK)
-    (CACHE / f"{s}.bar").unlink(missing_ok=True)
+    for suffix in (".bar", ".costs.json"):
+        (CACHE / f"{s}{suffix}").unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

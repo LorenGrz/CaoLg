@@ -76,18 +76,65 @@ def last_usage(jsonl_path):
     return None, None
 
 
-def opus_context_tokens(cwd):
-    """Tokens de contexto del transcript de Opus más reciente en ese cwd (los workers usan otro modelo)."""
+def opus_context_tokens(cwd, since=0.0):
+    """Tokens de contexto del transcript de Opus más reciente en ese cwd (los workers usan otro modelo).
+    `since` (epoch): ignora transcripts anteriores al último /clear; si no hay ninguno posterior, el
+    contexto está recién limpio -> 0 (así el /clear automático no se vuelve a disparar sobre el viejo)."""
     d = transcript_dir(cwd)
     try:
         files = sorted(d.glob("*.jsonl"), key=os.path.getmtime, reverse=True)
     except OSError:
         return None
+    if since:
+        files = [f for f in files if os.path.getmtime(f) > since]
+        if not files:
+            return 0
     for f in files[:10]:
         model, tokens = last_usage(f)
         if model and "opus" in model:
             return tokens
-    return None
+    return 0 if since else None
+
+
+def short_model(name):
+    """'claude-opus-5-5' -> 'opus', 'claude-sonnet-5-5' -> 'sonnet'; el resto tal cual."""
+    for k in ("opus", "sonnet", "haiku", "fable"):
+        if k in (name or ""):
+            return k
+    return name or "?"
+
+
+def claude_costs_for_path(sessions_json, cwd):
+    """Costo exacto por modelo (opus/sonnet…) de las sesiones de Claude Code cuyo cwd es `cwd`."""
+    encoded = transcript_dir(cwd).name
+    costs = {}
+    for s in (sessions_json or {}).get("sessions", []):
+        if s.get("projectPath") != encoded:
+            continue
+        for m in s.get("modelBreakdowns") or []:
+            k = short_model(m.get("modelName"))
+            costs[k] = costs.get(k, 0.0) + (m.get("cost") or 0.0)
+    return costs
+
+
+def cost_since(sessions_json, since_iso):
+    """Costo de las sesiones con actividad desde `since_iso` (ISO UTC). Aproximado: providers sin ruta."""
+    total = 0.0
+    for s in (sessions_json or {}).get("sessions", []):
+        last = s.get("lastActivity") or s.get("firstActivity") or ""
+        if last and last >= since_iso:
+            total += s.get("totalCost") or s.get("costUSD") or 0.0
+    return total
+
+
+def session_cost_text(costs, colors):
+    """'sesión $1.69 (opus 1.23 · sonnet 0.40 · agy≈0.06)' con estilos de tmux. costs: {nombre: (usd, exacto)}."""
+    if not costs:
+        return f"#[fg={colors['muted']}]sesión $0.00"
+    total = sum(v for v, _ in costs.values())
+    parts = [f"{k}{'' if exact else '≈'}{v:.2f}" for k, (v, exact) in costs.items() if v >= 0.005]
+    detail = f" #[fg={colors['muted']}]({' · '.join(parts)})" if parts else ""
+    return f"#[fg={colors['yellow']},bold]sesión ${total:.2f}#[nobold]{detail}"
 
 
 def human(n):
@@ -107,7 +154,7 @@ def pane_label(term, conductor_id):
     return f"{role} · {provider_short(term.get('provider'))}"
 
 
-def build_bar(session, ctx_pct, usage, colors, clear_at=30):
+def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None):
     """Línea 2 de la barra: agentes, contexto de Opus y usage (con estilos de tmux).
     El color del contexto es relativo al umbral del /clear automático: amarillo al 75%, rojo al llegar."""
     fg, muted = colors["foreground"], colors["muted"]
@@ -136,7 +183,8 @@ def build_bar(session, ctx_pct, usage, colors, clear_at=30):
             continue
         cost = "" if not p.get("cost_usd") else f" ${p['cost_usd']:.2f}"
         use.append(f"{name} {human(p.get('tokens'))}{cost}")
-    usage_txt = " · ".join(use) if use else "usage n/d"
+    usage_txt = "hoy: " + " · ".join(use) if use else "hoy: usage n/d"
 
     sep = f"#[fg={muted}] │ "
-    return f"#[fg={fg}] agentes: {left}{sep}{ctx}{sep}#[fg={fg}]{usage_txt} "
+    cost = session_cost_text(session_costs, colors) + sep if session_costs is not None else ""
+    return f"#[fg={fg}] agentes: {left}{sep}{ctx}{sep}{cost}#[fg={muted}]{usage_txt} "
