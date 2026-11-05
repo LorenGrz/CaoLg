@@ -1,0 +1,4 @@
+#!/bin/bash
+# Hook theme-set de Omarchy (lo instala install.sh): recolorea las sesiones cao-* abiertas con el tema nuevo.
+[[ -x "$HOME/.local/bin/caolg-theme" ]] && "$HOME/.local/bin/caolg-theme" --all >/dev/null 2>&1
+exit 0

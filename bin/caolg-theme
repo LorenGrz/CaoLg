@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""caolg-theme <session>|--all: aplica la barra de 2 líneas con los colores del tema de Omarchy
+a una sesión cao-* (o a todas). Solo opciones de sesión: no toca ~/.config/tmux."""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(os.path.realpath(__file__)).parent.parent / "lib"))
+import caolg_lib as L  # noqa: E402
+
+BIN = Path(os.path.realpath(__file__)).parent
+
+
+def tmux(*args):
+    return subprocess.run(["tmux", *args], capture_output=True, text=True)
+
+
+def apply(s, c):
+    wt = tmux("show", "-v", "-t", s, "@caolg_wt").stdout.strip() or "?"
+    branch = tmux("show", "-v", "-t", s, "@caolg_branch").stdout.strip() or "?"
+    home = str(Path.home())
+    wt_short = wt.replace(home, "~", 1)
+    bar = Path.home() / f".cache/caolg/{s}.bar"
+    opts = {
+        "status": "2",
+        "status-style": f"bg={c['background']},fg={c['foreground']}",
+        "status-left-length": "40",
+        "status-left": f"#[fg={c['background']},bg={c['accent']},bold] caolg #[bg=default] ",
+        "status-right-length": "160",
+        "status-right": (f"#[fg={c['yellow']}]{wt_short} #[fg={c['green']}]({branch}) "
+                         f"#[fg={c['muted']}]Alt+1..9 pane · Alt+z zoom · Alt+c clear · Alt+←/→ tab "),
+        "window-status-format": f"#[fg={c['muted']}] #I:#W ",
+        "window-status-current-format": f"#[fg={c['background']},bg={c['accent']},bold] #I:#W ",
+        "status-format[1]": f"#[align=left]#(cat {bar} 2>/dev/null)",
+        "pane-border-style": f"fg={c['muted']}",
+        "pane-active-border-style": f"fg={c['accent']}",
+        "message-style": f"bg={c['accent']},fg={c['background']}",
+    }
+    for k, v in opts.items():
+        tmux("set", "-t", s, k, v)
+    subprocess.run([str(BIN / "caolg-watch"), s, "--once"], capture_output=True)
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    c = L.load_colors()
+    if sys.argv[1] == "--all":
+        sessions = [x for x in tmux("ls", "-F", "#S").stdout.split() if x.startswith("cao-")]
+    else:
+        sessions = [sys.argv[1]]
+    for s in sessions:
+        apply(s, c)
+
+
+if __name__ == "__main__":
+    main()

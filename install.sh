@@ -1,20 +1,38 @@
 #!/usr/bin/env bash
-# Instala perfiles de CAO, el perfil seguro de Codex y enlaza bin/* en ~/.local/bin.
-# No copia ni toca credenciales: los logins quedan en ~/.claude, ~/.codex, ~/.copilot, ~/.gemini.
+# Instala CaoLg: CAO pineado + modo pane, perfiles, perfil seguro de Codex, bin/* en ~/.local/bin
+# y hook de tema de Omarchy. No copia ni toca credenciales (~/.claude, ~/.codex, ~/.copilot, ~/.gemini).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
+CAO_VERSION=2.5.4   # el truco de la marca (ADR 0002) depende de internals de esta versión
 
-command -v cao >/dev/null || { echo "Falta cao: uv tool install cli-agent-orchestrator" >&2; exit 1; }
+if ! cao -V 2>/dev/null | grep -q "$CAO_VERSION"; then
+  uv tool install "cli-agent-orchestrator==$CAO_VERSION"
+fi
+
+# Modo pane: los workers se suman como panes a la ventana "caolg" (donde caolg-session deja a Opus).
+cao config set terminal.spawn_mode pane >/dev/null
+cao config set terminal.pane_window caolg >/dev/null
+cao config set terminal.pane_layout none >/dev/null   # el layout lo maneja caolg-layout
 
 mkdir -p "$HOME/.local/bin"
-for f in "$here"/bin/*; do ln -sfn "$f" "$HOME/.local/bin/$(basename "$f")"; done
+for f in "$here"/bin/*; do [[ -f "$f" ]] && ln -sfn "$f" "$HOME/.local/bin/$(basename "$f")"; done
 
-ln -sfn "$here/codex/cao-safe.config.toml" "$HOME/.codex/cao-safe.config.toml"
+# Copia (no symlink): Codex escribe su propio estado en este archivo y ensuciaría el repo.
+rm -f "$HOME/.codex/cao-safe.config.toml"
+cp "$here/codex/cao-safe.config.toml" "$HOME/.codex/cao-safe.config.toml"
 
 for p in supervisor claude-dev codex-dev gemini-dev; do
   cao install "$here/profiles/$p.md"
 done
-cao install "$here/profiles/copilot-reviewer.md" --provider copilot_cli
+cao install "$here/profiles/copilot-dev.md" --provider copilot_cli
 cao install "$here/profiles/opencode-dev.md" --provider opencode_cli
 
-echo "Listo. Levantá el servidor (cao-server) y lanzá: cao-wt <repo> <slug>"
+# Perfil viejo renombrado a copilot-dev.
+rm -f "$HOME/.copilot/agents/copilot-reviewer.agent.md" \
+      "$HOME/.aws/cli-agent-orchestrator/agent-context/copilot-reviewer.md"
+
+if command -v omarchy >/dev/null; then
+  omarchy hook install theme-set "$here/omarchy/50-caolg-theme"
+fi
+
+echo "Listo. Reiniciá cao-server si estaba corriendo (toma la config de modo pane) y abrí: caolg open <repo> <slug>"

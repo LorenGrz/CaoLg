@@ -16,6 +16,8 @@ Se agrega encima: `cao-wt` (CAO no crea worktrees), `cao-usage` (uso global vía
 
 CAO lanza por defecto sus agentes sin pedir permisos. Se contiene así: el líder (supervisor, Opus) corre sin confirmaciones por pedido explícito de Loren (2026-11-05), con límites en su prompt y aislado en el worktree; `claude-dev` con `permissionMode: acceptEdits`; Codex con `codexProfile: cao-safe`; Copilot y Antigravity no permiten apagar el bypass, por lo que solo corren en worktrees aislados; OpenCode con `allowedTools` acotado. Esto reemplaza la práctica base de "aprobar acciones" con aislamiento por worktree + revisión de `git diff` antes de mergear.
 
+Actualización 2026-11-05: el layout tipo IDE (Opus + workers en la misma ventana) se decidió en el ADR 0002; el líder pasó a `role: developer` para poder escribir roles, tareas y su estado.
+
 ## Consecuencias
 
 - Los workers de Copilot y Antigravity pueden ejecutar comandos sin confirmación dentro de su worktree.

@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""caolg-watch <session> [--once]: pinta bordes/tabs por provider, escribe la línea 2 de la barra
+(~/.cache/caolg/<session>.bar) y dispara el /clear automático de Opus. Sale cuando la sesión muere.
+
+Env: CAOLG_CTX_WINDOW (default 1000000: Opus en Claude Code, verificado con /context),
+     CAOLG_CLEAR_AT (% de esa ventana, default 30 = 300k tokens; 0 = desactivado), CAOLG_TICK (s, default 10).
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(os.path.realpath(__file__)).parent.parent / "lib"))
+import caolg_lib as L  # noqa: E402
+
+API = "http://localhost:9889"
+CACHE = Path.home() / ".cache/caolg"
+CTX_WINDOW = int(os.environ.get("CAOLG_CTX_WINDOW", "1000000"))
+CLEAR_AT = int(os.environ.get("CAOLG_CLEAR_AT", "30"))
+USAGE_CACHE = CACHE / "usage.json"
+TICK = int(os.environ.get("CAOLG_TICK", "10"))
+USAGE_EVERY = 60
+CLEAR_COOLDOWN = 600
+BIN = Path(os.path.realpath(__file__)).parent
+
+
+def tmux(*args):
+    return subprocess.run(["tmux", *args], capture_output=True, text=True)
+
+
+def session_alive(s):
+    return tmux("has-session", "-t", f"={s}").returncode == 0  # "=": nombre exacto, no prefijo
+
+
+def fetch_session(s):
+    try:
+        with urllib.request.urlopen(f"{API}/sessions/{s}", timeout=5) as r:
+            return json.load(r)
+    except Exception:
+        return None
+
+
+def fetch_usage():
+    """Corre cao-usage y lo guarda en cache (lo comparten todas las sesiones y los --once)."""
+    try:
+        out = subprocess.run([str(BIN / "cao-usage"), "--json"], capture_output=True, text=True, timeout=120)
+        data = json.loads(out.stdout)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        USAGE_CACHE.write_text(json.dumps(data))
+        return data
+    except Exception:
+        return cached_usage()
+
+
+def cached_usage():
+    try:
+        return json.loads(USAGE_CACHE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def paint(s, session, colors):
+    """Borde de cada pane y tab de cada ventana con el color de su provider."""
+    terms = session.get("terminals", [])
+    if not terms:
+        return
+    conductor = terms[0]["id"]
+    panes = {}
+    for line in tmux("list-panes", "-s", "-t", s, "-F", "#{pane_id}\t#{@cao_terminal}").stdout.splitlines():
+        pid, _, mark = line.partition("\t")
+        if mark:
+            panes[mark] = pid
+    windows = set(tmux("list-windows", "-t", s, "-F", "#W").stdout.split())
+    for t in terms:
+        label = L.pane_label(t, conductor)
+        color = colors["accent"] if t["id"] == conductor else L.provider_color(t.get("provider"), colors)
+        pid = panes.get(t["tmux_window"])
+        if pid:
+            tmux("set", "-p", "-t", pid, "@caolg_label", label)
+            tmux("set", "-p", "-t", pid, "pane-border-format",
+                 f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {label} #[default]")
+            tmux("set", "-p", "-t", pid, "pane-active-border-style", f"fg={color}")
+        if t["tmux_window"] in windows:  # worker que no entró como pane: es una tab propia
+            tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-format", f"#[fg={color}] #I:{label} ")
+            tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-current-format",
+                 f"#[fg={colors['background']},bg={color},bold] #I:{label} ")
+
+
+def tick(s, state):
+    session = fetch_session(s)
+    if session is None:
+        return
+    colors = L.load_colors()
+    paint(s, session, colors)
+
+    now = time.time()
+    if now - state.get("usage_ts", 0) >= USAGE_EVERY:
+        state["usage"], state["usage_ts"] = fetch_usage(), now
+
+    terms = session.get("terminals", [])
+    ctx_pct = None
+    if terms:
+        tokens = L.opus_context_tokens(terms[0].get("working_directory", ""))
+        if tokens is not None:
+            ctx_pct = min(100, tokens * 100 // CTX_WINDOW)
+
+    CACHE.mkdir(parents=True, exist_ok=True)
+    usage = state.get("usage") or cached_usage()
+    (CACHE / f"{s}.bar").write_text(L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT))
+
+    idle = terms and terms[0].get("status") in ("idle", "completed")
+    if (CLEAR_AT and ctx_pct is not None and ctx_pct >= CLEAR_AT and idle
+            and now - state.get("clear_ts", 0) >= CLEAR_COOLDOWN):
+        state["clear_ts"] = now
+        subprocess.Popen([str(BIN / "caolg-clear"), s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    s = sys.argv[1]
+    state = {}
+    if "--once" in sys.argv:
+        state["usage_ts"] = time.time()  # --once no recalcula el usage (lento); solo repinta
+        tick(s, state)
+        return
+    while session_alive(s):
+        tick(s, state)
+        time.sleep(TICK)
+    (CACHE / f"{s}.bar").unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

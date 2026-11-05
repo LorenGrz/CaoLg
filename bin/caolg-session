@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# caolg-session <session> <worktree> <rama> <state> <roles_dir>
+# Lo lanza cao-wt en segundo plano. Deja a Opus como pane principal de la ventana "caolg" (donde CAO
+# suma los workers en modo pane), instala hooks/tema/atajos, saluda y queda corriendo caolg-watch.
+set -uo pipefail
+s=$1 wt=$2 branch=$3 state=$4 roles=$5
+here=$(dirname "$(realpath "$0")")
+
+for _ in $(seq 60); do tmux has-session -t "$s" 2>/dev/null && break; sleep 1; done
+tmux has-session -t "$s" 2>/dev/null || exit 1
+
+# Esperar a que CAO termine de inicializar al líder: mientras lo inicializa lo busca por nombre de
+# ventana, y renombrarla antes hace que CAO dé por fallido el arranque y cierre la sesión.
+ready=0
+for _ in $(seq 90); do
+  st=$(curl -fsS -m 5 "http://localhost:9889/sessions/$s" 2>/dev/null \
+       | python3 -c 'import sys,json; t=json.load(sys.stdin).get("terminals") or [{}]; print(t[0].get("status",""))' 2>/dev/null)
+  case "$st" in idle|completed|waiting_user_answer) ready=1; break ;; esac
+  tmux has-session -t "$s" 2>/dev/null || exit 1
+  sleep 2
+done
+[[ $ready == 1 ]] || { tmux display -t "$s" "caolg: el líder no quedó listo; no apliqué el layout" 2>/dev/null; exit 1; }
+
+# Truco de la marca (ver docs/decisions/0002): CAO encuentra un terminal por nombre de ventana y, si no
+# existe, por la marca @cao_terminal del pane. Marcamos el pane de Opus con su nombre de ventana y
+# renombramos la ventana a "caolg" (= terminal.pane_window), así los workers se suman al lado.
+wid=$(tmux list-windows -t "$s" -F '#{window_id}' | head -1)
+wname=$(tmux display -p -t "$wid" '#W')
+if [[ "$wname" != caolg ]]; then
+  tid=$(tmux show -w -v -t "$wid" @cao_terminal_id 2>/dev/null)
+  pid=$(tmux list-panes -t "$wid" -F '#{pane_id}' | head -1)
+  tmux set -p -t "$pid" @cao_terminal "$wname"
+  [[ -n "$tid" ]] && tmux set -p -t "$pid" @cao_terminal_id "$tid"
+  # CAO instala un hook que deshace los renombres (Claude Code renombra su ventana); lo apuntamos a "caolg".
+  tmux set-hook -t "$wid" window-renamed "rename-window -t $wid caolg"
+  tmux rename-window -t "$wid" caolg
+fi
+
+tmux set -t "$s" @caolg_wt "$wt"
+tmux set -t "$s" @caolg_branch "$branch"
+tmux set -t "$s" @caolg_state "$state"
+tmux set -t "$s" @caolg_roles "$roles"
+tmux set-hook -t "$s" after-split-window "run-shell -b '$here/caolg-layout $s'"
+tmux set-hook -t "$s" pane-exited "run-shell -b '$here/caolg-layout $s'"
+tmux source-file "$here/../tmux/caolg-keys.conf"
+"$here/caolg-layout" "$s" >/dev/null 2>&1
+"$here/caolg-theme" "$s" >/dev/null 2>&1
+
+if [[ "${CAO_WT_GREET:-1}" == 1 ]]; then
+  sleep 3
+  cao session send "$s" --async \
+    "Presentate en 3 líneas: carpeta, rama y workers que podés abrir. Si $roles está vacío o no existe, leé el repo y creá ahí los roles que tengan sentido (front.md, back.md, reviewer.md…) y decime cuáles creaste. Después esperá mi tarea." \
+    >/dev/null 2>&1
+fi
+
+exec "$here/caolg-watch" "$s"
