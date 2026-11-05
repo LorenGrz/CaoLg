@@ -12,7 +12,7 @@ CAO 2.5.4 (pineado, Python, `uv tool`), tmux ≥ 3.3, `ccusage` para el uso, bas
 
 ```bash
 ./install.sh   # CAO 2.5.4 + modo pane, perfiles, bin/* en ~/.local/bin, perfil seguro de Codex, hook de tema
-caolg server   # en una terminal aparte (reiniciarlo después de install.sh)
+caolg server   # opcional: caolg lo levanta solo; reiniciarlo después de install.sh
 ```
 
 El líder **solo usa los providers donde tenés sesión iniciada**. `caolg usage` muestra la columna `login` y, para los que faltan, cómo loguearte (`codex login`, `copilot login`, `opencode auth login`, abrir `agy`). Se refresca cada 5 min (o `cao-usage --refresh-auth`), así que al loguearte se suma solo. En la barra, los que no tienen login aparecen tachados.
@@ -22,12 +22,18 @@ Detección: `claude auth status`, `codex login status`, `opencode auth list`; Co
 ## Uso
 
 ```bash
-caolg open ~/projects/<repo> <slug>   # terminal nueva: worktree + rama agent/<slug> + líder Opus
-caolg here ~/projects/<repo> <slug>   # lo mismo en esta terminal
+cd ~/projects/<repo> && caolg         # worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
+                                      # (si ya existe, se adjunta; dentro de un worktree de caolg, a esa sesión)
+caolg open                            # lo mismo en una terminal nueva
+caolg open ~/projects/<repo> <slug>   # repo y nombre explícitos, terminal nueva
+caolg here ~/projects/<repo> <slug>   # repo y nombre explícitos, esta terminal
 caolg ls                              # sesiones activas (web UI: http://localhost:9889)
 caolg usage                           # uso por suscripción
-caolg rm ~/projects/<repo> <slug>     # cierra la sesión y borra el worktree
+caolg rm                              # cierra la sesión de la carpeta actual y borra su worktree
+caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 ```
+
+`cao-server` se levanta solo si no está corriendo (log en `~/.cache/caolg/cao-server.log`).
 
 ### Layout
 

@@ -1,19 +1,53 @@
 #!/usr/bin/env bash
 # caolg: punto de entrada único.
-#   caolg open <repo> <slug> [perfil]   terminal nueva para ese proyecto (líder Opus)
-#   caolg here <repo> <slug> [perfil]   lo mismo, pero en esta terminal
-#   caolg rm <repo> <slug>              cierra la sesión y borra el worktree
-#   caolg ls                            sesiones activas
-#   caolg usage [--json]                uso por suscripción
-#   caolg server                        levanta cao-server
+#   caolg                              desde la carpeta actual: worktree + sesión cao-<carpeta> en esta terminal
+#                                      (si la sesión ya existe, se adjunta)
+#   caolg open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
+#   caolg here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
+#   caolg rm [<repo> <slug>]           cierra la sesión y borra el worktree (sin args: carpeta actual)
+#   caolg ls                           sesiones activas
+#   caolg usage [--json]               uso y login por suscripción
+#   caolg server                       levanta cao-server en primer plano
 set -euo pipefail
-cmd=${1:-}; shift || true
+
+# Repo y nombre de sesión a partir de la carpeta actual (o del worktree caolg en el que estás parado).
+from_cwd() {
+  local top
+  top=$(git rev-parse --show-toplevel 2>/dev/null) \
+    || { echo "caolg: $PWD no está dentro de un repo git" >&2; exit 1; }
+  local common main
+  common=$(git rev-parse --path-format=absolute --git-common-dir)
+  main=$(dirname "$common")                     # checkout principal, aunque estés en un worktree
+  repo=$main
+  if [[ "$(dirname "$top")" == "$main-wt" ]]; then
+    slug=$(basename "$top")                     # ya estás en un worktree de caolg: esa sesión
+  else
+    slug=$(basename "$main" | tr -c 'A-Za-z0-9_\n-' '-')
+  fi
+}
+
+attach_or_launch() {  # $1 = modo: here|open
+  if tmux has-session -t "=cao-$slug" 2>/dev/null; then
+    if [[ "$1" == open ]]; then
+      exec cao-open "$repo" "$slug"
+    elif [[ -n "${TMUX:-}" ]]; then
+      exec tmux switch-client -t "=cao-$slug"
+    else
+      exec tmux attach -t "=cao-$slug"
+    fi
+  fi
+  if [[ "$1" == open ]]; then exec cao-open "$repo" "$slug"; else exec cao-wt "$repo" "$slug"; fi
+}
+
+cmd=${1:-}
 case "$cmd" in
-  open)   exec cao-open "$@" ;;
-  here)   exec cao-wt "$@" ;;
-  rm)     exec cao-wt --rm "$@" ;;
+  "")     from_cwd; attach_or_launch here ;;
+  open)   shift; if [[ $# -eq 0 ]]; then from_cwd; attach_or_launch open; else exec cao-open "$@"; fi ;;
+  here)   shift; exec cao-wt "$@" ;;
+  rm)     shift; if [[ $# -eq 0 ]]; then from_cwd; exec cao-wt --rm "$repo" "$slug"; else exec cao-wt --rm "$@"; fi ;;
   ls)     exec cao-ls ;;
-  usage)  exec cao-usage "$@" ;;
+  usage)  shift; exec cao-usage "$@" ;;
   server) exec cao-server ;;
-  *)      sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; [[ -z "$cmd" || "$cmd" == -h || "$cmd" == --help ]] ;;
+  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

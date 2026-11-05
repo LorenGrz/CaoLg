@@ -26,11 +26,22 @@ if [[ $rm_mode -eq 1 ]]; then
   exit 0
 fi
 
-curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null \
-  || { echo "cao-server no responde en :9889. Levantalo en otra terminal: caolg server" >&2; exit 1; }
+if ! curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null; then
+  # Levantarlo en segundo plano, independiente de esta terminal (log en ~/.cache/caolg/cao-server.log).
+  mkdir -p ~/.cache/caolg
+  echo "caolg: levantando cao-server…" >&2
+  setsid -f cao-server >>~/.cache/caolg/cao-server.log 2>&1 </dev/null
+  for _ in $(seq 30); do curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null && break; sleep 1; done
+  curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null \
+    || { echo "cao-server no arrancó; mirá ~/.cache/caolg/cao-server.log" >&2; exit 1; }
+fi
 
 if [[ ! -d "$wt" ]]; then
-  git -C "$repo" worktree add "$wt" -b "$branch"
+  if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$repo" worktree add "$wt" "$branch"      # la rama ya existe (worktree borrado antes)
+  else
+    git -C "$repo" worktree add "$wt" -b "$branch"
+  fi
 fi
 # Las tareas que escribe el líder no se commitean (exclude local del repo, no toca .gitignore).
 excl="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
