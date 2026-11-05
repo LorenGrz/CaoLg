@@ -1,29 +1,56 @@
 #!/usr/bin/env bash
-# cao-wt: un worktree aislado por sesión de CAO.
-#   cao-wt <repo> <slug> [perfil]   crea worktree + rama agent/<slug> y lanza CAO adentro (default: supervisor)
-#   cao-wt --rm <repo> <slug>       cierra la sesión y borra el worktree
+# cao-wt: lanza una sesión de CaoLg.
+#   cao-wt <repo> <slug> [perfil]        worktree aislado + rama agent/<slug> (default: supervisor)
+#   cao-wt --dir <carpeta> <slug> [perfil]  carpeta sin git: los agentes trabajan ahí mismo, sin worktree
+#   cao-wt --rm <repo> <slug>            cierra la sesión y borra el worktree
+#   cao-wt --rm --dir <carpeta> <slug>   cierra la sesión (la carpeta no se toca)
 set -euo pipefail
 
-usage() { sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
+usage() { sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
 
-rm_mode=0
-if [[ "${1:-}" == "--rm" ]]; then rm_mode=1; shift; fi
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage 0
+rm_mode=0 dir_mode=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --rm) rm_mode=1 ;;
+    --dir) dir_mode=1 ;;
+    --help) usage 0 ;;
+    *) usage ;;
+  esac
+  shift
+done
+[[ "${1:-}" == "-h" ]] && usage 0
 [[ $# -ge 2 ]] || usage
 
-repo=$(cd "$1" && git rev-parse --show-toplevel)
 slug=$2
 profile=${3:-supervisor}
-name=$(basename "$repo")
-wt="$(dirname "$repo")/$name-wt/$slug"
-branch="agent/$slug"
 here=$(dirname "$(realpath "$0")")
+
+if [[ $dir_mode -eq 1 ]]; then
+  wt=$(cd "$1" && pwd)
+  name=$(basename "$wt")
+  branch="sin git"
+else
+  repo=$(cd "$1" && git rev-parse --show-toplevel)
+  name=$(basename "$repo")
+  wt="$(dirname "$repo")/$name-wt/$slug"
+  branch="agent/$slug"
+fi
 
 if [[ $rm_mode -eq 1 ]]; then
   cao shutdown --session "cao-$slug" || echo "aviso: no había sesión cao-$slug" >&2
-  git -C "$repo" worktree remove "$wt"   # falla si hay cambios sin commitear: es a propósito
-  echo "worktree $wt eliminado. La rama $branch se conserva (borrala con: git -C $repo branch -d $branch)"
+  if [[ $dir_mode -eq 0 ]]; then
+    git -C "$repo" worktree remove "$wt"   # falla si hay cambios sin commitear: es a propósito
+    echo "worktree $wt eliminado. La rama $branch se conserva (borrala con: git -C $repo branch -d $branch)"
+  fi
   exit 0
+fi
+
+if [[ $dir_mode -eq 1 ]]; then
+  # Sin worktree el líder edita sin confirmaciones directo en la carpeta: frenar en lugares amplios.
+  if [[ "$wt" == "$HOME" || "$wt" == / ]]; then
+    read -r -p "caolg: vas a abrir agentes sin confirmaciones sobre $wt entero. ¿Seguro? [y/N] " ok
+    [[ "$ok" == [yY]* ]] || exit 1
+  fi
 fi
 
 if ! curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null; then
@@ -36,19 +63,21 @@ if ! curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null; then
     || { echo "cao-server no arrancó; mirá ~/.cache/caolg/cao-server.log" >&2; exit 1; }
 fi
 
-if [[ ! -d "$wt" ]]; then
-  if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
-    git -C "$repo" worktree add "$wt" "$branch"      # la rama ya existe (worktree borrado antes)
-  else
-    git -C "$repo" worktree add "$wt" -b "$branch"
+if [[ $dir_mode -eq 0 ]]; then
+  if [[ ! -d "$wt" ]]; then
+    if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+      git -C "$repo" worktree add "$wt" "$branch"      # la rama ya existe (worktree borrado antes)
+    else
+      git -C "$repo" worktree add "$wt" -b "$branch"
+    fi
   fi
+  # Las tareas que escribe el líder no se commitean (exclude local del repo, no toca .gitignore).
+  excl="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+  mkdir -p "$(dirname "$excl")"
+  grep -qxF '.caolg-tasks/' "$excl" 2>/dev/null || echo '.caolg-tasks/' >> "$excl"
 fi
-# Las tareas que escribe el líder no se commitean (exclude local del repo, no toca .gitignore).
-excl="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
-mkdir -p "$(dirname "$excl")"
-grep -qxF '.caolg-tasks/' "$excl" 2>/dev/null || echo '.caolg-tasks/' >> "$excl"
 
-# Roles por carpeta y estado de Opus fuera del repo: sobreviven a los worktrees y no ensucian el proyecto.
+# Roles por carpeta y estado de Opus fuera del proyecto: sobreviven a los worktrees y no lo ensucian.
 data="$HOME/.local/share/caolg/$name"
 roles="$data/agents"
 state="$data/$slug/state.md"

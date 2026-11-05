@@ -22,9 +22,10 @@ Detección: `claude auth status`, `codex login status`, `opencode auth list`; Co
 ## Uso
 
 ```bash
-cd ~/projects/<repo> && caolg         # worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
+cd ~/projects/<repo> && codes         # repo git: worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
                                       # (si ya existe, se adjunta; dentro de un worktree de caolg, a esa sesión)
-caolg open                            # lo mismo en una terminal nueva
+cd ~/cualquier/carpeta && codes       # sin git: trabaja ahí mismo, como claude (sin worktree), sesión cao-<carpeta>
+codes open                            # lo mismo en una terminal nueva
 caolg open ~/projects/<repo> <slug>   # repo y nombre explícitos, terminal nueva
 caolg here ~/projects/<repo> <slug>   # repo y nombre explícitos, esta terminal
 caolg ls                              # sesiones activas (web UI: http://localhost:9889)
@@ -80,7 +81,7 @@ Variables: `CAO_WT_GREET=0` (sin saludo), `CAOLG_CLEAR_AT` (0 desactiva), `CAOLG
 | gemini-dev | `antigravity_cli` | CAO fuerza bypass de permisos: solo en el worktree |
 | opencode-dev | `opencode_cli` | permisos allow/deny fijados al instalar (experimental) |
 
-Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. Ningún agente corre en el checkout principal.
+Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. En repos git ningún agente corre en el checkout principal (siempre worktree). En carpetas sin git trabajan en la carpeta misma, sin red de seguridad de git: `codes` pide confirmación si la carpeta es `~` o `/`.
 
 ## Decisiones
 

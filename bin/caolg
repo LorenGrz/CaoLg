@@ -1,53 +1,62 @@
 #!/usr/bin/env bash
-# caolg: punto de entrada único.
-#   caolg                              desde la carpeta actual: worktree + sesión cao-<carpeta> en esta terminal
-#                                      (si la sesión ya existe, se adjunta)
-#   caolg open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
-#   caolg here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
-#   caolg rm [<repo> <slug>]           cierra la sesión y borra el worktree (sin args: carpeta actual)
-#   caolg ls                           sesiones activas
-#   caolg usage [--json]               uso y login por suscripción
-#   caolg server                       levanta cao-server en primer plano
+# caolg (alias: codes): punto de entrada único.
+#   codes                              desde la carpeta actual, en esta terminal (si la sesión existe, se adjunta):
+#                                        repo git -> worktree aislado <repo>-wt/<repo> + sesión cao-<repo>
+#                                        carpeta sin git -> trabaja ahí mismo, como claude, sesión cao-<carpeta>
+#   codes open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
+#   codes here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
+#   codes rm [<repo> <slug>]           cierra la sesión (y borra el worktree si es repo); sin args: carpeta actual
+#   codes ls                           sesiones activas
+#   codes usage [--json]               uso y login por suscripción
+#   codes server                       levanta cao-server en primer plano
 set -euo pipefail
+me=$(basename "$0")
 
-# Repo y nombre de sesión a partir de la carpeta actual (o del worktree caolg en el que estás parado).
+# Define: target (repo o carpeta), slug y mode (repo|dir), a partir de la carpeta actual.
 from_cwd() {
-  local top
-  top=$(git rev-parse --show-toplevel 2>/dev/null) \
-    || { echo "caolg: $PWD no está dentro de un repo git" >&2; exit 1; }
-  local common main
-  common=$(git rev-parse --path-format=absolute --git-common-dir)
-  main=$(dirname "$common")                     # checkout principal, aunque estés en un worktree
-  repo=$main
-  if [[ "$(dirname "$top")" == "$main-wt" ]]; then
-    slug=$(basename "$top")                     # ya estás en un worktree de caolg: esa sesión
+  local top common main
+  if top=$(git rev-parse --show-toplevel 2>/dev/null); then
+    common=$(git rev-parse --path-format=absolute --git-common-dir)
+    main=$(dirname "$common")                   # checkout principal, aunque estés en un worktree
+    mode=repo target=$main
+    if [[ "$(dirname "$top")" == "$main-wt" ]]; then
+      slug=$(basename "$top")                   # ya estás en un worktree de caolg: esa sesión
+    else
+      slug=$(basename "$main")
+    fi
   else
-    slug=$(basename "$main" | tr -c 'A-Za-z0-9_\n-' '-')
+    mode=dir target=$PWD slug=$(basename "$PWD")
+    [[ "$PWD" == / ]] && slug=root
   fi
+  slug=$(printf '%s' "$slug" | tr -c 'A-Za-z0-9_-' '-')
 }
 
-attach_or_launch() {  # $1 = modo: here|open
+launch() {  # $1 = here|open
   if tmux has-session -t "=cao-$slug" 2>/dev/null; then
-    if [[ "$1" == open ]]; then
-      exec cao-open "$repo" "$slug"
-    elif [[ -n "${TMUX:-}" ]]; then
-      exec tmux switch-client -t "=cao-$slug"
-    else
-      exec tmux attach -t "=cao-$slug"
-    fi
+    if [[ "$1" == open ]]; then exec cao-open "$target" "$slug"
+    elif [[ -n "${TMUX:-}" ]]; then exec tmux switch-client -t "=cao-$slug"
+    else exec tmux attach -t "=cao-$slug"; fi
   fi
-  if [[ "$1" == open ]]; then exec cao-open "$repo" "$slug"; else exec cao-wt "$repo" "$slug"; fi
+  local dirflag=()
+  [[ $mode == dir ]] && dirflag=(--dir)
+  if [[ "$1" == open ]]; then exec cao-open "${dirflag[@]}" "$target" "$slug"
+  else exec cao-wt "${dirflag[@]}" "$target" "$slug"; fi
 }
+
+help() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd=${1:-}
 case "$cmd" in
-  "")     from_cwd; attach_or_launch here ;;
-  open)   shift; if [[ $# -eq 0 ]]; then from_cwd; attach_or_launch open; else exec cao-open "$@"; fi ;;
+  "")     from_cwd; launch here ;;
+  open)   shift; if [[ $# -eq 0 ]]; then from_cwd; launch open; else exec cao-open "$@"; fi ;;
   here)   shift; exec cao-wt "$@" ;;
-  rm)     shift; if [[ $# -eq 0 ]]; then from_cwd; exec cao-wt --rm "$repo" "$slug"; else exec cao-wt --rm "$@"; fi ;;
+  rm)     shift
+          if [[ $# -gt 0 ]]; then exec cao-wt --rm "$@"; fi
+          from_cwd
+          if [[ $mode == dir ]]; then exec cao-wt --rm --dir "$target" "$slug"; else exec cao-wt --rm "$target" "$slug"; fi ;;
   ls)     exec cao-ls ;;
   usage)  shift; exec cao-usage "$@" ;;
   server) exec cao-server ;;
-  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *)      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  -h|--help|help) help ;;
+  *)      echo "$me: comando desconocido: $cmd" >&2; help; exit 1 ;;
 esac

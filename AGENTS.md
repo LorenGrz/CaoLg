@@ -5,7 +5,7 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 ## Mapa
 
 - `profiles/*.md`: perfiles de CAO (frontmatter YAML + prompt). `supervisor` = líder Opus; workers genéricos por provider (`claude-dev`, `codex-dev`, `gemini-dev`, `opencode-dev`, `copilot-dev`), el rol viene en la tarea.
-- `bin/caolg`: entrada única (`open|here|rm|ls|usage|server`).
+- `bin/caolg` (alias `codes`): entrada única. Sin args usa la carpeta actual: repo git → worktree; sin git → `cao-wt --dir` en la carpeta misma.
 - `bin/cao-wt`, `bin/cao-open`, `bin/cao-ls`, `bin/cao-usage`: worktree + lanzamiento, terminal por proyecto, sesiones, usage.
 - `bin/caolg-session`: post-lanzamiento (truco de la marca, hooks, tema, atajos, saludo) y luego `caolg-watch`.
 - `bin/caolg-watch`: bordes/tabs por provider, línea 2 de la barra (`~/.cache/caolg/<s>.bar`), `/clear` automático.
@@ -23,6 +23,7 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 
 ## Reglas
 
+- Después de cada cambio: tests + `bash -n`, commit (Conventional Commits) y push a `main` sin preguntar (pedido de Loren).
 - Repo público: nunca secretos ni copias de `~/.claude`, `~/.codex`, `~/.copilot`, `~/.gemini`.
 - Nunca `cao launch --yolo` ni `allowedTools: ["*"]`.
 - CAO pineado en 2.5.4 (ADR 0002). Subir de versión exige repetir la verificación del plan visual.
