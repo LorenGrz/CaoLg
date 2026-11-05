@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# caolg: punto de entrada único.
+#   caolg open <repo> <slug> [perfil]   terminal nueva para ese proyecto (líder Opus)
+#   caolg here <repo> <slug> [perfil]   lo mismo, pero en esta terminal
+#   caolg rm <repo> <slug>              cierra la sesión y borra el worktree
+#   caolg ls                            sesiones activas
+#   caolg usage [--json]                uso por suscripción
+#   caolg server                        levanta cao-server
+set -euo pipefail
+cmd=${1:-}; shift || true
+case "$cmd" in
+  open)   exec cao-open "$@" ;;
+  here)   exec cao-wt "$@" ;;
+  rm)     exec cao-wt --rm "$@" ;;
+  ls)     exec cao-ls ;;
+  usage)  exec cao-usage "$@" ;;
+  server) exec cao-server ;;
+  *)      sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; [[ -z "$cmd" || "$cmd" == -h || "$cmd" == --help ]] ;;
+esac

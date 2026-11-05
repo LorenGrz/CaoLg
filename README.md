@@ -1,4 +1,4 @@
-# cao-config
+# CaoLg
 
 "Orca en terminal": configuración de [CAO (CLI Agent Orchestrator)](https://github.com/awslabs/cli-agent-orchestrator) para orquestar Claude Code, Copilot, Codex, Antigravity (`agy`) y OpenCode, cada uno con su login nativo, en tmux y con un worktree por sesión.
 
@@ -16,6 +16,8 @@ uv tool install cli-agent-orchestrator
 ```
 
 ## Uso
+
+Comando único: `caolg open|here|rm|ls|usage|server` (envuelve los scripts de abajo).
 
 ```bash
 cao-server                              # terminal aparte, queda corriendo (web UI: http://localhost:9889)

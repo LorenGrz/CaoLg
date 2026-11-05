@@ -1,4 +1,4 @@
-# cao-config
+# CaoLg
 
 Configuración personal de CAO (orquestador multi-CLI). Ver `README.md` para uso.
 
