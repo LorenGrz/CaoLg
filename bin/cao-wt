@@ -85,6 +85,13 @@ state="$data/$slug/state.md"
 mkdir -p "$roles" "$(dirname "$state")"
 
 cd "$wt"
+# MCP del líder: cao-mcp-server con scope local en esta carpeta (el perfil no define mcpServers para que CAO
+# no use --strict-mcp-config y el líder conserve los conectores de claude.ai y plugins). Ver bin/caolg-mcp.
+if ! claude mcp get cao-mcp-server 2>/dev/null | grep -q "$here/caolg-mcp"; then
+  claude mcp remove -s local cao-mcp-server >/dev/null 2>&1
+  claude mcp add -s local cao-mcp-server -- "$here/caolg-mcp" >/dev/null 2>&1 \
+    || echo "caolg: no pude registrar cao-mcp-server en $wt (el líder no podrá abrir workers)" >&2
+fi
 # Layout, tema, atajos, saludo y watcher, en segundo plano mientras CAO se adjunta a la sesión.
 setsid -f "$here/caolg-session" "cao-$slug" "$wt" "$branch" "$state" "$roles" </dev/null >/dev/null 2>&1
 

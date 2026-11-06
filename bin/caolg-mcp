@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""caolg-mcp: cao-mcp-server para el líder, registrado con scope local en las carpetas de caolg.
+
+CAO lanza Claude con --strict-mcp-config cuando el perfil define mcpServers, y eso le quita al líder tus
+conectores de claude.ai y plugins. Por eso el perfil supervisor no define mcpServers y cao-wt registra este
+script como "cao-mcp-server" (claude mcp add -s local) en la carpeta del líder (ver ADR 0004).
+
+- Con CAO_TERMINAL_ID de un líder (perfil supervisor, según la API de CAO): ejecuta el cao-mcp-server de CAO.
+- Si no (un worker de Claude en la misma carpeta, o un Claude tuyo abierto a mano): MCP vacío, sin
+  herramientas ni errores. Los workers no abren agentes por su cuenta, como antes.
+"""
+import json
+import os
+import re
+import shutil
+import sys
+import urllib.request
+from pathlib import Path
+
+CAO_MCP = Path.home() / ".local/share/uv/tools/cli-agent-orchestrator/bin/cao-mcp-server"
+
+
+def is_leader(tid):
+    try:
+        with urllib.request.urlopen(f"http://localhost:9889/terminals/{tid}", timeout=3) as r:
+            return json.load(r).get("agent_profile") == "supervisor"
+    except Exception:
+        return False
+
+
+def real_server():
+    found = shutil.which("cao-mcp-server")
+    return found or (str(CAO_MCP) if CAO_MCP.exists() else None)
+
+
+def noop():
+    for line in sys.stdin:
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "id" not in req:  # notificación: no lleva respuesta
+            continue
+        method = req.get("method")
+        if method == "initialize":
+            result = {"protocolVersion": (req.get("params") or {}).get("protocolVersion", "2025-06-18"),
+                      "capabilities": {"tools": {}},
+                      "serverInfo": {"name": "cao-mcp-server (fuera de CAO, inactivo)", "version": "0"}}
+        elif method == "tools/list":
+            result = {"tools": []}
+        elif method == "ping":
+            result = {}
+        else:
+            resp = {"jsonrpc": "2.0", "id": req["id"], "error": {"code": -32601, "message": "fuera de CAO"}}
+            print(json.dumps(resp), flush=True)
+            continue
+        print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+
+
+def main():
+    tid = os.environ.get("CAO_TERMINAL_ID", "")
+    server = real_server()
+    if re.fullmatch(r"[0-9a-f]{8}", tid) and server and is_leader(tid):
+        os.execv(server, [server, *sys.argv[1:]])
+    noop()
+
+
+if __name__ == "__main__":
+    main()

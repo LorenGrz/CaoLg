@@ -4,7 +4,8 @@ description: "Worker Claude (Sonnet): el rol viene en la tarea"
 role: developer
 provider: claude_code
 model: sonnet
-permissionMode: acceptEdits
+# auto: Claude Code aprueba solo lo seguro y frena lo riesgoso (pedido de Loren, 2026-11-06).
+permissionMode: auto
 ---
 
 # CLAUDE-DEV

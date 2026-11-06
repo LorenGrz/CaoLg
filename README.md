@@ -71,6 +71,8 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 
 ### Cómo trabaja el líder
 
+- Tiene los mismos MCP que tu Claude (Atlassian/Jira, GitHub, Slack, Gmail, Drive, plugins…), así que puede leer tickets o cargarlos sin abrir un worker; escribir ahí va solo con tu OK. Los workers de Claude arrancan en **auto mode** (`permissionMode: auto`).
+
 - Al abrir un proyecto responde una línea (carpeta, rama, roles) sin leer nada; solo si no hay **roles de la carpeta** lee lo justo del repo y los crea en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
 - En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/` (excluido de git) y te dice en qué `Alt+N` quedó.
 - **Nunca se limpia solo.** Cuando su contexto pasa `CAOLG_WARN_AT` (default 50%, medido con el % exacto de su statusline), el borde de Opus se pone rojo con `⚠ ctx N% · Alt+c` y aparece un aviso. Con `Alt+c` escribe su estado en `~/.local/share/caolg/<repo>/<slug>/state.md` y se limpia.
