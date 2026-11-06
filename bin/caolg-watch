@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""caolg-watch <session> [--once]: pinta bordes/tabs por provider, escribe la línea 2 de la barra
+"""caolg-watch <session> [--once]: pinta bordes/tabs por provider (con carpeta y rama de cada agente), escribe la línea 2 de la barra
 (~/.cache/caolg/<session>.bar) y avisa cuando el contexto de Opus pasa el límite (no limpia solo:
 el /clear lo hacés vos con Alt+c). Sale cuando la sesión muere.
 
@@ -71,6 +71,30 @@ def cached_usage():
         return None
 
 
+def git_where(path):
+    """(raíz del repo, rama) de `path`; (path, None) si no es git. Rama detached: el sha corto."""
+    out = subprocess.run(["git", "-C", path, "rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
+                         capture_output=True, text=True)
+    lines = out.stdout.split()
+    if out.returncode != 0 or len(lines) < 2:
+        return path, None
+    top, branch = lines[0], lines[1]
+    if branch == "HEAD":
+        branch = subprocess.run(["git", "-C", path, "rev-parse", "--short", "HEAD"],
+                                capture_output=True, text=True).stdout.strip() or None
+    return top, branch
+
+
+def where_of(term, pane_path):
+    """Carpeta y rama donde trabaja la terminal. Claude: el cwd de su statusline (sigue los `cd` del agente);
+    el resto: la carpeta del proceso del pane; si no, la de CAO."""
+    path = (L.cwd_from_statusline(read_json(CTX_DIR / f"{term['id']}.json")) or pane_path
+            or term.get("working_directory") or "")
+    if not path or not os.path.isdir(path):
+        return L.where_label(path)
+    return L.where_label(*git_where(path))
+
+
 def paint(s, session, colors, warn=None):
     """Borde de cada pane y tab de cada ventana con el color de su provider."""
     terms = session.get("terminals", [])
@@ -79,20 +103,21 @@ def paint(s, session, colors, warn=None):
     conductor = terms[0]["id"]
     panes = {}
     rows, extra = [], {}
-    fmt = "#{pane_id}\t#{window_id}\t#{@cao_terminal}\t#{@caolg_role}\t#{@caolg_color}"
+    fmt = "#{pane_id}\t#{window_id}\t#{@cao_terminal}\t#{@caolg_role}\t#{@caolg_color}\t#{pane_current_path}"
     for line in tmux("list-panes", "-s", "-t", f"={s}", "-F", fmt).stdout.splitlines():
-        pid, win, mark, role, ckey = (line.split("\t") + [""] * 4)[:5]
+        pid, win, mark, role, ckey, ppath = (line.split("\t") + [""] * 5)[:6]
         own = tmux("show", "-p", "-qv", "-t", pid, "@cao_terminal").stdout.strip() if mark else ""
         rows.append({"id": pid, "win": win, "own": own, "inherited": mark})
-        extra[pid] = (role, ckey)
+        extra[pid] = (role, ckey, ppath)
     # La marca del supervisor es de ventana y se hereda a todos los panes: ver L.owner_marks.
     lid = tmux("show", "-qv", "-t", f"={s}:", "@caolg_leader").stdout.strip()
     for pid, mark in L.owner_marks(rows, lid).items():
         panes[mark] = (pid, *extra[pid])
     windows = set(tmux("list-windows", "-t", s, "-F", "#W").stdout.split())
     for t in terms:
-        pid, role, ckey = panes.get(t["tmux_window"], (None, "", ""))
+        pid, role, ckey, ppath = panes.get(t["tmux_window"], (None, "", "", ""))
         label = L.pane_label(t, conductor, role or None)
+        where = where_of(t, ppath)
         # Cada worker tiene su color fijo de tab (lo asigna caolg-tabs); Opus, el accent del tema.
         if t["id"] == conductor:
             color = colors["red"] if warn else colors["accent"]
@@ -104,9 +129,11 @@ def paint(s, session, colors, warn=None):
             color = L.provider_color(t.get("provider"), colors)
         if pid:
             tmux("set", "-p", "-t", pid, "@caolg_label", label)
+            tmux("set", "-p", "-t", pid, "@caolg_where", where)
             if t["id"] == conductor:  # las tabs de la derecha las pinta caolg-tabs strip
+                full = f"{label} · {where}" if where else label
                 tmux("set", "-p", "-t", pid, "pane-border-format",
-                     f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {label} #[default]")
+                     f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {full} #[default]")
                 tmux("set", "-p", "-t", pid, "pane-active-border-style", f"fg={color}")
         if t["tmux_window"] in windows:  # worker que no entró como pane: es una tab propia
             tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-format", f"#[fg={color}] #I:{label} ")

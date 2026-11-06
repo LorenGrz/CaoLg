@@ -34,8 +34,9 @@ API = "http://localhost:9889"
 PARK = "caolg-park"
 SELF = os.path.realpath(__file__)
 FMT = "\t".join(["#{pane_id}", "#{window_id}", "#{window_name}", "#{@caolg_tab}", "#{@caolg_label}",
-                 "#{@caolg_color}", "#{pane_current_command}", "#{@cao_terminal_id}", "#{pane_active}"])
-KEYS = ("id", "win", "wname", "tab", "label", "color", "cmd", "tid", "active")
+                 "#{@caolg_color}", "#{pane_current_command}", "#{@cao_terminal_id}", "#{pane_active}",
+                 "#{@caolg_where}"])
+KEYS = ("id", "win", "wname", "tab", "label", "color", "cmd", "tid", "active", "where")
 SHELLS = {"zsh", "bash", "fish", "sh"}
 
 
@@ -157,7 +158,7 @@ class Tabs:
             if not t["color"] or t["color"].startswith("#"):  # tab de antes de los colores fijos
                 t["color"] = L.tab_color_key(t["tab"])
                 tmux("set", "-p", "-t", t["id"], "@caolg_color", t["color"])
-            items.append({"id": t["id"], "label": t["label"] or t["cmd"] or "?",
+            items.append({"id": t["id"], "label": t["label"] or t["cmd"] or "?", "where": t.get("where") or "",
                           "color": L.tab_color(t["color"], colors)})
         c = L.tab_color(vis[0]["color"], colors)
         tmux("set", "-p", "-t", vis[0]["id"], "pane-border-format", L.tab_strip(items, vis[0]["id"], colors))
