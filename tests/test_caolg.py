@@ -35,13 +35,6 @@ class TestCaolg(unittest.TestCase):
     def test_load_colors_without_file(self):
         self.assertEqual(L.load_colors("/no/existe.toml"), L.DEFAULT_COLORS)
 
-    def test_bar_marks_providers_without_login(self):
-        usage = {"providers": [{"agent": "codex", "tokens": 0, "cost_usd": 0.0, "logged_in": False},
-                               {"agent": "claude", "tokens": 10, "cost_usd": 0.0, "logged_in": True}]}
-        bar = L.build_bar(usage, L.DEFAULT_COLORS)
-        self.assertIn("codex#[nostrikethrough] sin login", bar)
-        self.assertIn("claude 10", bar)
-
     def test_opus_context_ignores_transcripts_before_clear(self):
         import os
         import time
@@ -61,14 +54,50 @@ class TestCaolg(unittest.TestCase):
                 if old_home is not None:
                     os.environ["HOME"] = old_home
 
-    def test_build_bar_only_today_usage(self):
-        usage = {"providers": [{"agent": "claude", "tokens": 25_880_496, "cost_usd": 13.65},
-                               {"agent": "antigravity", "tokens": 76_700, "cost_usd": 0.0}]}
-        bar = L.build_bar(usage, L.DEFAULT_COLORS)
-        self.assertIn("hoy: claude 25.9M $13.65 · agy 76.7k", bar)
-        for gone in ("agentes", "ctx", "sesión"):
+    def test_bar_shows_quota_windows_without_tokens_or_prices(self):
+        now = 1_000_000
+        usage = {"providers": [
+            {"agent": "claude", "logged_in": True, "tokens": 9, "cost_usd": 3.5,
+             "limits": [{"label": "5h", "pct": 8.2, "resets_at": now + 4 * 3600 + 7 * 60},
+                        {"label": "7d", "pct": 1, "resets_at": now + 4 * 86400 + 18 * 3600}]},
+            {"agent": "codex", "logged_in": False, "limits": []},
+            {"agent": "antigravity", "logged_in": True, "limits": []},
+            {"agent": "copilot", "logged_in": True, "limits": [{"label": "mes", "pct": 85, "resets_at": now - 1}]},
+        ]}
+        c = L.DEFAULT_COLORS
+        bar = L.build_bar(usage, c, now)
+        self.assertIn(f"5h #[fg={c['green']}]8%#[fg={c['muted']}] 4h07m", bar)
+        self.assertIn("7d #[fg=" + c["green"] + "]1%#[fg=" + c["muted"] + "] 4d18h", bar)
+        self.assertIn("codex#[nostrikethrough] sin login", bar)
+        self.assertIn("agy#[nobold] #[fg=" + c["muted"] + "]n/d", bar)
+        self.assertIn("mes #[fg=" + c["green"] + "]0%", bar)  # ya se reseteó
+        for gone in ("hoy", "$", "agentes", "sesión"):
             self.assertNotIn(gone, bar)
-        self.assertIn("usage n/d", L.build_bar(None, L.DEFAULT_COLORS))
+
+    def test_limit_parsers(self):
+        cl = L.claude_limits({"rate_limits": {"five_hour": {"used_percentage": 8, "resets_at": 1793990000},
+                                              "seven_day": {"used_percentage": 1, "resets_at": "2026-11-11T05:00:00Z"}}})
+        self.assertEqual([w["label"] for w in cl], ["5h", "7d"])
+        self.assertEqual(cl[1]["resets_at"], L.to_epoch("2026-11-11T05:00:00+00:00"))
+        self.assertEqual(L.claude_limits(None), [])
+        ev = {"timestamp": "2026-11-06T10:00:00Z", "payload": {"type": "token_count", "rate_limits": {
+            "primary": {"used_percent": 12.0, "window_minutes": 300, "resets_in_seconds": 600},
+            "secondary": {"used_percent": 40.0, "window_minutes": 10080, "resets_at": 1794000000}}}}
+        cx = L.codex_limits(ev)
+        self.assertEqual([(w["label"], w["pct"]) for w in cx], [("5h", 12.0), ("7d", 40.0)])
+        self.assertEqual(cx[0]["resets_at"], L.to_epoch("2026-11-06T10:10:00Z"))
+        cp = L.copilot_limits({"quota_reset_date": "2026-12-01", "quota_snapshots": {
+            "chat": {"unlimited": True}, "premium_interactions": {"unlimited": False, "percent_remaining": 96.7}}})
+        self.assertEqual(cp[0]["label"], "mes")
+        self.assertAlmostEqual(cp[0]["pct"], 3.3)
+        self.assertEqual(L.copilot_limits({}), [])
+
+    def test_time_left(self):
+        self.assertEqual(L.time_left(None, 0), "--")
+        self.assertEqual(L.time_left(100, 200), "--")
+        self.assertEqual(L.time_left(45 * 60, 0), "45m")
+        self.assertEqual(L.time_left(4 * 3600 + 7 * 60, 0), "4h07m")
+        self.assertEqual(L.time_left(4 * 86400 + 18 * 3600, 0), "4d18h")
 
     def test_display_model(self):
         self.assertEqual(L.display_model({"model": "opus", "provider": "claude_code"}), "Opus 5.5")

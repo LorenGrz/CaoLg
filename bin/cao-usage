@@ -8,7 +8,12 @@ Sin --since usa hoy. Login (cacheado 5 min en ~/.cache/caolg/auth.json):
   opencode -> `opencode auth list`        copilot / antigravity -> no tienen comando de estado:
   se toman como logueados si hubo uso en los últimos 7 días.
 Forzar a mano en ~/.config/caolg/auth.toml, p. ej.:  copilot = true   codex = false
-`quota_pct_used` es null (ninguna CLI expone el % de cupo); para probar la rotación:
+Cupos (`limits`: ventana, % usado, reset) según lo que expone cada CLI:
+  claude  -> ~/.cache/claude/rate-limits.json (lo escribe la statusline de Claude Code): 5h y 7d
+  codex   -> último evento token_count de ~/.codex/sessions/**/rollout-*.jsonl: primary/secondary
+  copilot -> `gh api /copilot_internal/user` (cache 5 min): pedidos premium del mes
+  agy / opencode -> no exponen cupo: n/d
+`quota_pct_used` = la ventana más gastada. Para probar la rotación:
   CAO_USAGE_OVERRIDE='{"codex": 95}' cao-usage --json
 """
 import argparse
@@ -21,6 +26,9 @@ import sys
 import time
 import tomllib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(os.path.realpath(__file__)).parent.parent / "lib"))
+import caolg_lib as L  # noqa: E402
 
 # agente de ccusage -> worker de CAO
 AGENTS = {
@@ -40,6 +48,9 @@ LOGIN_HINT = {
 AUTH_CACHE = Path.home() / ".cache/caolg/auth.json"
 AUTH_OVERRIDE = Path.home() / ".config/caolg/auth.toml"
 AUTH_TTL = 300
+CLAUDE_LIMITS = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude/rate-limits.json"
+CODEX_SESSIONS = Path.home() / ".codex/sessions"
+COPILOT_CACHE = Path.home() / ".cache/caolg/copilot-quota.json"
 
 
 def run(cmd, timeout=30):
@@ -117,6 +128,62 @@ def login_status(refresh=False):
     return result
 
 
+def read_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def codex_event():
+    """Último token_count con rate_limits del rollout más reciente de Codex (o None)."""
+    try:
+        files = sorted(CODEX_SESSIONS.rglob("rollout-*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)
+    except OSError:
+        return None
+    for f in files[:3]:
+        try:
+            lines = f.read_text(errors="ignore").splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if '"rate_limits"' in line:
+                try:
+                    return json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+    return None
+
+
+def copilot_user():
+    """Solo los campos de cupo de `gh api /copilot_internal/user`, cacheados 5 min (gh maneja el token)."""
+    cached = read_json(COPILOT_CACHE)
+    if cached and time.time() - cached.get("ts", 0) < AUTH_TTL:
+        return cached
+    rc, out = run(["gh", "api", "/copilot_internal/user", "--jq",
+                   "{quota_reset_date, quota_reset_date_utc, quota_snapshots}"], timeout=20)
+    try:
+        data = json.loads(out) if rc == 0 else None
+    except json.JSONDecodeError:
+        data = None
+    if data is None:
+        return cached
+    data["ts"] = time.time()
+    COPILOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    COPILOT_CACHE.write_text(json.dumps(data))
+    return data
+
+
+def limits(agent):
+    if agent == "claude":
+        return L.claude_limits(read_json(CLAUDE_LIMITS))
+    if agent == "codex":
+        return L.codex_limits(codex_event())
+    if agent == "copilot":
+        return L.copilot_limits(copilot_user())
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser(description="Uso y login por suscripción")
     ap.add_argument("--since", default=datetime.date.today().strftime("%Y%m%d"))
@@ -134,6 +201,8 @@ def main():
     for agent, worker in AGENTS.items():
         tokens, cost, status = query(agent, args.since)
         logged, source = logins.get(agent, (None, "sin datos"))
+        lims = limits(agent) if logged is not False else []
+        live = [w["pct"] for w in lims if not (w.get("resets_at") and w["resets_at"] <= time.time())]
         rows.append({
             "agent": agent,
             "worker": worker,
@@ -142,7 +211,8 @@ def main():
             "login_hint": None if logged else LOGIN_HINT[agent],
             "tokens": tokens,
             "cost_usd": None if cost is None else round(cost, 2) + 0.0,  # +0.0 evita "-0.00"
-            "quota_pct_used": override.get(agent),
+            "quota_pct_used": override.get(agent, max(live) if live else None),
+            "limits": lims,
             "status": status,
         })
 

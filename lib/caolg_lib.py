@@ -218,16 +218,113 @@ def tab_strip(tabs, visible_id, colors):
     return "".join(parts)
 
 
-def build_bar(usage, colors):
-    """Línea 2 de la barra: solo el uso de hoy por CLI (con estilos de tmux). Contexto y gasto de cada agente
-    los muestra su propia statusline, abajo de su pane."""
+# ── Cupos de cada suscripción (línea 2 de la barra) ─────────────────────────
+# Cada CLI expone su cupo distinto; todo se normaliza a [{label, pct (usado), resets_at (epoch)}].
+
+def to_epoch(v):
+    """resets_at en segundos, milisegundos o ISO ('2026-11-11T05:00:00Z', '2026-12-01') -> epoch o None."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)) or (isinstance(v, str) and v.replace(".", "", 1).isdigit()):
+        e = float(v)
+        return e / 1000 if e > 1e12 else e
+    import datetime
+    try:
+        d = datetime.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone.utc)
+    return d.timestamp()
+
+
+def window_label(minutes):
+    """300 -> '5h', 10080 -> '7d', 43200 -> 'mes'."""
+    if not minutes:
+        return "?"
+    if minutes >= 28 * 1440:
+        return "mes"
+    if minutes >= 1440:
+        return f"{round(minutes / 1440)}d"
+    return f"{round(minutes / 60)}h"
+
+
+def claude_limits(cache):
+    """Copia que escribe la statusline de Claude Code (~/.cache/claude/rate-limits.json)."""
+    rl = (cache or {}).get("rate_limits") or {}
+    out = []
+    for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
+        w = rl.get(key) or {}
+        if w.get("used_percentage") is not None:
+            out.append({"label": label, "pct": float(w["used_percentage"]), "resets_at": to_epoch(w.get("resets_at"))})
+    return out
+
+
+def codex_limits(event):
+    """Evento token_count de un rollout de Codex (~/.codex/sessions/**/rollout-*.jsonl)."""
+    payload = (event or {}).get("payload") or event or {}
+    rl = payload.get("rate_limits") or (payload.get("info") or {}).get("rate_limits") or {}
+    base = to_epoch((event or {}).get("timestamp"))
+    out = []
+    for key in ("primary", "secondary"):
+        w = rl.get(key) or {}
+        if w.get("used_percent") is None:
+            continue
+        reset = to_epoch(w.get("resets_at"))
+        if reset is None and w.get("resets_in_seconds") is not None and base:
+            reset = base + float(w["resets_in_seconds"])
+        out.append({"label": window_label(w.get("window_minutes")), "pct": float(w["used_percent"]),
+                    "resets_at": reset})
+    return out
+
+
+def copilot_limits(user):
+    """Respuesta de `gh api /copilot_internal/user`: pedidos premium del mes (chat y completions son ilimitados)."""
+    q = ((user or {}).get("quota_snapshots") or {}).get("premium_interactions") or {}
+    if q.get("unlimited") or q.get("percent_remaining") is None:
+        return []
+    return [{"label": "mes", "pct": max(0.0, 100 - float(q["percent_remaining"])),
+             "resets_at": to_epoch(user.get("quota_reset_date_utc") or user.get("quota_reset_date"))}]
+
+
+def time_left(resets_at, now):
+    """Lo que falta para el reset, como la statusline de Claude: '45m', '4h07m', '4d18h'; '--' si ya pasó."""
+    if resets_at is None:
+        return "--"
+    d = int(resets_at - now)
+    if d <= 0:
+        return "--"
+    if d < 3600:
+        return f"{d // 60}m"
+    if d < 86400:
+        return f"{d // 3600}h{d % 3600 // 60:02d}m"
+    return f"{d // 86400}d{d % 86400 // 3600}h"
+
+
+def pct_color(pct, colors):
+    """Mismos umbrales que la statusline de Claude: amarillo desde 50%, rojo desde 80%."""
+    return colors["red"] if pct >= 80 else colors["yellow"] if pct >= 50 else colors["green"]
+
+
+def build_bar(usage, colors, now=None):
+    """Línea 2 de la barra: el cupo de cada suscripción, p. ej.
+    'claude 5h 8% 4h07m · 7d 1% 4d18h │ copilot mes 3% 24d │ codex sin login'. Sin tokens ni precios."""
+    import time
+    now = time.time() if now is None else now
     fg, muted = colors["foreground"], colors["muted"]
-    use = []
+    parts = []
     for p in (usage or {}).get("providers", []):
         name = USAGE_SHORT.get(p["agent"], p["agent"])
         if p.get("logged_in") is False:  # el líder no lo usa hasta que Loren se loguee
-            use.append(f"#[fg={muted},strikethrough]{name}#[nostrikethrough] sin login#[fg={fg}]")
+            parts.append(f"#[fg={muted},strikethrough]{name}#[nostrikethrough] sin login")
             continue
-        cost = "" if not p.get("cost_usd") else f" ${p['cost_usd']:.2f}"
-        use.append(f"{name} {human(p.get('tokens'))}{cost}")
-    return f"#[fg={fg}] hoy: " + (" · ".join(use) if use else f"#[fg={muted}]usage n/d") + " "
+        wins = []
+        for w in p.get("limits") or []:
+            reset = w.get("resets_at")
+            pct = 0 if reset and reset <= now else round(w["pct"])  # ventana ya reseteada: arranca de cero
+            wins.append(f"{w['label']} #[fg={pct_color(pct, colors)}]{pct}%#[fg={muted}] {time_left(reset, now)}")
+        body = f"#[fg={muted}] · ".join(f"#[fg={fg}]{w}" for w in wins) if wins else f"#[fg={muted}]n/d"
+        parts.append(f"#[fg={fg},bold]{name}#[nobold] {body}")
+    if not parts:
+        return f"#[fg={muted}] cupos n/d "
+    return " " + f" #[fg={muted}]│ ".join(parts) + " "
