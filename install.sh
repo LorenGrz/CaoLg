@@ -16,7 +16,7 @@ cao config set terminal.pane_layout none >/dev/null   # el layout lo maneja caol
 
 mkdir -p "$HOME/.local/bin"
 for f in "$here"/bin/*; do [[ -f "$f" ]] && ln -sfn "$f" "$HOME/.local/bin/$(basename "$f")"; done
-ln -sfn "$here/bin/caolg" "$HOME/.local/bin/codes"   # alias corto
+ln -sfn "$here/bin/caolg" "$HOME/.local/bin/claudes"   # alias corto
 
 # Copia (no symlink): Codex escribe su propio estado en este archivo y ensuciaría el repo.
 rm -f "$HOME/.codex/cao-safe.config.toml"
