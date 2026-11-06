@@ -96,6 +96,21 @@ def opus_context_tokens(cwd, since=0.0):
     return 0 if since else None
 
 
+def ctx_from_statusline(data):
+    """% de contexto que guarda la statusline de Claude Code por terminal de CAO (o None)."""
+    try:
+        return round(float((data or {})["used_percentage"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def ctx_warning(pct, warn_at):
+    """Aviso para el borde de Opus cuando su contexto pasó el límite; None si no hay que avisar."""
+    if not warn_at or pct is None or pct < warn_at:
+        return None
+    return f"⚠ ctx {pct}% · Alt+c"
+
+
 def human(n):
     if n is None:
         return "n/d"

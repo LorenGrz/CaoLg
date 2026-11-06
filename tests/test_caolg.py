@@ -95,6 +95,15 @@ class TestCaolg(unittest.TestCase):
         self.assertAlmostEqual(cp[0]["pct"], 3.3)
         self.assertEqual(L.copilot_limits({}), [])
 
+    def test_ctx_warning_only_past_limit(self):
+        self.assertIsNone(L.ctx_warning(49, 50))
+        self.assertEqual(L.ctx_warning(50, 50), "⚠ ctx 50% · Alt+c")
+        self.assertIsNone(L.ctx_warning(90, 0))  # 0 = sin aviso
+        self.assertIsNone(L.ctx_warning(None, 50))
+        self.assertEqual(L.ctx_from_statusline({"used_percentage": 12.6}), 13)
+        self.assertIsNone(L.ctx_from_statusline(None))
+        self.assertIsNone(L.ctx_from_statusline({"used_percentage": None}))
+
     def test_time_left(self):
         self.assertEqual(L.time_left(None, 0), "--")
         self.assertEqual(L.time_left(100, 200), "--")

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """caolg-watch <session> [--once]: pinta bordes/tabs por provider, escribe la línea 2 de la barra
-(~/.cache/caolg/<session>.bar) y dispara el /clear automático de Opus. Sale cuando la sesión muere.
+(~/.cache/caolg/<session>.bar) y avisa cuando el contexto de Opus pasa el límite (no limpia solo:
+el /clear lo hacés vos con Alt+c). Sale cuando la sesión muere.
 
-Env: CAOLG_CTX_WINDOW (default 1000000: Opus en Claude Code, verificado con /context),
-     CAOLG_CLEAR_AT (% de esa ventana, default 30 = 300k tokens; 0 = desactivado), CAOLG_TICK (s, default 10).
+Env: CAOLG_WARN_AT (% de contexto de Opus para avisar, default 50; 0 = sin aviso; acepta el viejo
+     CAOLG_CLEAR_AT), CAOLG_CTX_WINDOW (default 1000000, solo para el cálculo de respaldo), CAOLG_TICK (s, default 10).
 """
 import json
 import os
@@ -19,11 +20,12 @@ import caolg_lib as L  # noqa: E402
 API = "http://localhost:9889"
 CACHE = Path.home() / ".cache/caolg"
 CTX_WINDOW = int(os.environ.get("CAOLG_CTX_WINDOW", "1000000"))
-CLEAR_AT = int(os.environ.get("CAOLG_CLEAR_AT", "30"))
+WARN_AT = int(os.environ.get("CAOLG_WARN_AT") or os.environ.get("CAOLG_CLEAR_AT") or "50")
+# % exacto de contexto por terminal de CAO: lo escribe la statusline de Claude Code.
+CTX_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude/ctx"
 USAGE_CACHE = CACHE / "usage.json"
 TICK = int(os.environ.get("CAOLG_TICK", "10"))
 USAGE_EVERY = 60
-CLEAR_COOLDOWN = 600
 BIN = Path(os.path.realpath(__file__)).parent
 
 
@@ -33,6 +35,13 @@ def tmux(*args):
 
 def session_alive(s):
     return tmux("has-session", "-t", f"={s}").returncode == 0  # "=": nombre exacto, no prefijo
+
+
+def read_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def fetch_session(s):
@@ -62,7 +71,7 @@ def cached_usage():
         return None
 
 
-def paint(s, session, colors):
+def paint(s, session, colors, warn=None):
     """Borde de cada pane y tab de cada ventana con el color de su provider."""
     terms = session.get("terminals", [])
     if not terms:
@@ -86,7 +95,9 @@ def paint(s, session, colors):
         label = L.pane_label(t, conductor, role or None)
         # Cada worker tiene su color fijo de tab (lo asigna caolg-tabs); Opus, el accent del tema.
         if t["id"] == conductor:
-            color = colors["accent"]
+            color = colors["red"] if warn else colors["accent"]
+            if warn:
+                label = f"{label} · {warn}"
         elif ckey:
             color = L.tab_color(ckey, colors)
         else:
@@ -114,27 +125,27 @@ def tick(s, state):
     now = time.time()
     if now - state.get("usage_ts", 0) >= USAGE_EVERY:
         state["usage"], state["usage_ts"] = fetch_usage(), now
-    paint(s, session, colors)
 
     terms = session.get("terminals", [])
     ctx_pct = None
     if terms:
-        cleared = tmux("show", "-qv", "-t", f"={s}:", "@caolg_cleared_at").stdout.strip()
-        since = float(cleared) if cleared.replace(".", "", 1).isdigit() else 0.0
-        tokens = L.opus_context_tokens(terms[0].get("working_directory", ""), since)
-        if tokens is not None:
-            ctx_pct = min(100, tokens * 100 // CTX_WINDOW)
+        ctx_pct = L.ctx_from_statusline(read_json(CTX_DIR / f"{terms[0]['id']}.json"))
+        if ctx_pct is None:  # sin statusline todavía: transcript más reciente de Opus en la carpeta
+            cleared = tmux("show", "-qv", "-t", f"={s}:", "@caolg_cleared_at").stdout.strip()
+            since = float(cleared) if cleared.replace(".", "", 1).isdigit() else 0.0
+            tokens = L.opus_context_tokens(terms[0].get("working_directory", ""), since)
+            if tokens is not None:
+                ctx_pct = min(100, tokens * 100 // CTX_WINDOW)
+
+    warn = L.ctx_warning(ctx_pct, WARN_AT)
+    if warn and not state.get("warned"):  # una vez por cruce del límite, no cada tick
+        tmux("display", "-d", "8000", "-t", f"={s}:", f"caolg: el contexto de Opus pasó el {WARN_AT}% "
+             f"({ctx_pct}%). Alt+c guarda su estado y lo limpia.")
+    state["warned"] = bool(warn)
+    paint(s, session, colors, warn)
 
     usage = state.get("usage") or cached_usage()
-    (CACHE / f"{s}.bar").write_text(
-        L.build_bar(usage, colors))
-
-    idle = terms and terms[0].get("status") in ("idle", "completed")
-    if (CLEAR_AT and ctx_pct is not None and ctx_pct >= CLEAR_AT and idle
-            and now - state.get("clear_ts", 0) >= CLEAR_COOLDOWN):
-        state["clear_ts"] = now
-        subprocess.Popen([str(BIN / "caolg-clear"), s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+    (CACHE / f"{s}.bar").write_text(L.build_bar(usage, colors))
 
 
 def main():
@@ -147,7 +158,7 @@ def main():
         tick(s, state)
         return
     # Un solo watcher por sesión: si ya hay uno (relanzamiento), este se va. Dos watchers duplicaban
-    # el /clear automático.
+    # los avisos y el trabajo.
     import fcntl
     CACHE.mkdir(parents=True, exist_ok=True)
     lock = open(CACHE / f"{s}.watch.lock", "w")

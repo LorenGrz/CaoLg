@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # caolg-clear <session>: Opus guarda su estado en $CAOLG_STATE, se hace /clear y solo se le recuerdan
 # los roles de la carpeta (no se le pide retomar: lo decidís vos).
-# Lo dispara Alt+c (manual) o caolg-watch cuando el contexto pasa CAOLG_CLEAR_AT (automático).
+# Lo dispara solo Alt+c: caolg-watch ya no limpia solo, avisa cuando el contexto pasa CAOLG_WARN_AT.
 set -uo pipefail
 s=$1
 mkdir -p ~/.cache/caolg
@@ -21,13 +21,14 @@ cao session send "$s" --timeout 300 \
 [[ -s "$state" ]] || { tmux display -t "$s" "caolg: $state quedó vacío; cancelo el /clear"; exit 1; }
 
 # Pane de Opus: el que caolg-watch etiquetó como líder (fallback: primer pane de la ventana caolg).
-pane=$(tmux list-panes -s -t "=$s" -F '#{pane_id} #{@caolg_label}' | awk '/Opus/ {print $1; exit}')
+pane=$(tmux show -qv -t "=$s:" @caolg_leader)
+[[ -n "$pane" ]] || pane=$(tmux list-panes -s -t "=$s" -F '#{pane_id} #{@caolg_label}' | awk '/líder/ {print $1; exit}')
 pane=${pane:-$s:caolg.1}
 tmux send-keys -t "$pane" "/clear"
 sleep 0.5
 tmux send-keys -t "$pane" Enter
-# Desde acá el contexto se mide solo en transcripts nuevos: evita que el /clear automático
-# se vuelva a disparar mirando el transcript viejo.
+# Desde acá el contexto se mide solo en transcripts nuevos: el cálculo de respaldo
+# (sin statusline) no siga mirando el transcript viejo.
 tmux set -t "=$s:" @caolg_cleared_at "$(date +%s)"
 sleep 3
 

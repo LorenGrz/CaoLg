@@ -73,9 +73,9 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 
 - Al abrir un proyecto se presenta (carpeta, rama, workers) y, si no hay, crea los **roles de la carpeta** en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
 - En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/` (excluido de git) y te dice en qué `Alt+N` quedó.
-- **/clear automático** cuando su contexto pasa `CAOLG_CLEAR_AT` (default 30% de 1M); antes escribe su estado en `~/.local/share/caolg/<repo>/<slug>/state.md` y después lo relee.
+- **Nunca se limpia solo.** Cuando su contexto pasa `CAOLG_WARN_AT` (default 50%, medido con el % exacto de su statusline), el borde de Opus se pone rojo con `⚠ ctx N% · Alt+c` y aparece un aviso. Con `Alt+c` escribe su estado en `~/.local/share/caolg/<repo>/<slug>/state.md` y se limpia.
 
-Variables: `CAO_WT_GREET=0` (sin saludo), `CAOLG_CLEAR_AT` (0 desactiva), `CAOLG_CTX_WINDOW`, `CAOLG_TICK`.
+Variables: `CAO_WT_GREET=0` (sin saludo), `CAOLG_WARN_AT` (0 sin aviso), `CAOLG_CTX_WINDOW`, `CAOLG_TICK`.
 
 ## Permisos por provider
 
