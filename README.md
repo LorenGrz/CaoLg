@@ -51,7 +51,7 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 ```
 
 - Opus fijo en la mitad izquierda (50%); la mitad derecha muestra **un solo** agente o terminal por vez (tabs, `bin/caolg-tabs`). Los demás quedan estacionados en una ventana oculta y se traen con `Alt+2..9`/`Alt+0`. Cada tab nueva toma un color distinto (naranja, verde, azul, magenta, cyan, amarillo, rojo, en ronda) y lo conserva aunque la muevas; el borde superior lista las tabs con su tecla.
-- Línea 2: el cupo de cada suscripción como lo da cada CLI: ventana, % usado y lo que falta para el reset (claude `5h`/`7d` desde la statusline de Claude Code, que guarda una copia en `~/.cache/claude/rate-limits.json`; codex `5h`/`7d` de sus rollouts; copilot pedidos premium del `mes` vía `gh`; agy y opencode no exponen cupo: `n/d`). Orden: claude, agy, copilot, opencode (codex al final); solo aparecen los que tienen login, separados por `|`. Verde, amarillo desde 50%, rojo desde 80%. Sin tokens ni precios. Contexto y gasto de cada agente los muestra su propia statusline, abajo de su pane. El borde de cada pane dice solo `<modelo> · <nombre>` (`Opus 5.5 · líder`, `Sonnet 5.5 · front`). Se actualiza cada 10 s.
+- Línea 2: el cupo de cada suscripción como lo da cada CLI: ventana, % usado y lo que falta para el reset (fuente: el panel de agentes de Omarchy, `~/.local/state/omarchy/agents/usage/`: claude `5h`/`7d`, agy `7d`, copilot `mes`; opencode no tiene cupo propio: `n/d`. Respaldo si falta: statusline de Claude, rollouts de Codex, `gh` para copilot). Orden: claude, agy, copilot, opencode (codex al final); solo aparecen los que tienen login, separados por `|`. Verde, amarillo desde 50%, rojo desde 80%. Sin tokens ni precios. Contexto y gasto de cada agente los muestra su propia statusline, abajo de su pane. El borde de cada pane dice solo `<modelo> · <nombre>` (`Opus 5.5 · líder`, `Sonnet 5.5 · front`). Se actualiza cada 10 s.
 - Colores del tema actual de Omarchy; al cambiar de tema se recolorean las sesiones abiertas.
 
 ### Atajos (solo dentro de sesiones `cao-*`; afuera siguen como en tu tmux.conf)
@@ -71,7 +71,7 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 
 ### Cómo trabaja el líder
 
-- Al abrir un proyecto se presenta (carpeta, rama, workers) y, si no hay, crea los **roles de la carpeta** en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
+- Al abrir un proyecto responde una línea (carpeta, rama, roles) sin leer nada; solo si no hay **roles de la carpeta** lee lo justo del repo y los crea en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
 - En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/` (excluido de git) y te dice en qué `Alt+N` quedó.
 - **Nunca se limpia solo.** Cuando su contexto pasa `CAOLG_WARN_AT` (default 50%, medido con el % exacto de su statusline), el borde de Opus se pone rojo con `⚠ ctx N% · Alt+c` y aparece un aviso. Con `Alt+c` escribe su estado en `~/.local/share/caolg/<repo>/<slug>/state.md` y se limpia.
 

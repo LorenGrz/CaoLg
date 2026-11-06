@@ -302,6 +302,27 @@ def copilot_limits(user):
              "resets_at": to_epoch(user.get("quota_reset_date_utc") or user.get("quota_reset_date"))}]
 
 
+def omarchy_limits(record):
+    """Registro de Omarchy (~/.local/state/omarchy/agents/usage/<agente>.json, lo mantiene su panel de
+    agentes) -> ventanas normalizadas. `percent` viene como fracción (0.18 = 18%). Solo 5h, 7d y mes:
+    los cupos por modelo (p. ej. 'Fable Weekly') no entran en la barra."""
+    out = []
+    for lim in (record or {}).get("limits") or []:
+        label = lim.get("label") or ""
+        if "5-hour" in label:
+            short = "5h"
+        elif label.startswith("Weekly"):
+            short = "7d"
+        elif label.startswith("Monthly"):
+            short = "mes"
+        else:
+            continue
+        if lim.get("percent") is None:
+            continue
+        out.append({"label": short, "pct": float(lim["percent"]) * 100, "resets_at": to_epoch(lim.get("resetsAt"))})
+    return out
+
+
 def time_left(resets_at, now):
     """Lo que falta para el reset, como la statusline de Claude: '45m', '4h07m', '4d18h'; '--' si ya pasó."""
     if resets_at is None:

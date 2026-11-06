@@ -8,7 +8,10 @@ Sin --since usa hoy. Login (cacheado 5 min en ~/.cache/caolg/auth.json):
   opencode -> `opencode auth list`        copilot / antigravity -> no tienen comando de estado:
   se toman como logueados si hubo uso en los últimos 7 días.
 Forzar a mano en ~/.config/caolg/auth.toml, p. ej.:  copilot = true   codex = false
-Cupos (`limits`: ventana, % usado, reset) según lo que expone cada CLI:
+Cupos (`limits`: ventana, % usado, reset). Fuente principal: los registros del panel de agentes de Omarchy
+(~/.local/state/omarchy/agents/usage/<agente>.json; claude 5h/7d, agy 7d, copilot mes; su `ready` también
+dice si hay login). Si un registro falta o tiene más de 10 min, se pide `omarchy-agent-usage-update
+--limits-only` en segundo plano y, mientras, se usa el respaldo propio:
   claude  -> ~/.cache/claude/rate-limits.json (lo escribe la statusline de Claude Code): 5h y 7d
   codex   -> último evento token_count de ~/.codex/sessions/**/rollout-*.jsonl: primary/secondary
   copilot -> `gh api /copilot_internal/user` (cache 5 min): pedidos premium del mes
@@ -21,6 +24,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -51,6 +55,9 @@ AUTH_TTL = 300
 CLAUDE_LIMITS = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude/rate-limits.json"
 CODEX_SESSIONS = Path.home() / ".codex/sessions"
 COPILOT_CACHE = Path.home() / ".cache/caolg/copilot-quota.json"
+OMARCHY_USAGE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "omarchy/agents/usage"
+OMARCHY_ID = {"claude": "claude", "codex": "codex", "antigravity": "agy", "opencode": "opencode", "copilot": "copilot"}
+OMARCHY_FRESH = 600
 
 
 def run(cmd, timeout=30):
@@ -174,7 +181,26 @@ def copilot_user():
     return data
 
 
-def limits(agent):
+def omarchy_record(agent):
+    """Registro de Omarchy del agente, o None. Si está viejo pide refrescarlo (sin esperar)."""
+    oid = OMARCHY_ID.get(agent)
+    if not oid:
+        return None
+    path = OMARCHY_USAGE / f"{oid}.json"
+    rec = read_json(path)
+    try:
+        stale = time.time() - path.stat().st_mtime > OMARCHY_FRESH
+    except OSError:
+        stale = True
+    if stale and shutil.which("omarchy-agent-usage-update"):
+        subprocess.Popen(["omarchy-agent-usage-update", "--limits-only", oid], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    return rec
+
+
+def limits(agent, rec=None):
+    if rec and rec.get("limits"):
+        return L.omarchy_limits(rec)
     if agent == "claude":
         return L.claude_limits(read_json(CLAUDE_LIMITS))
     if agent == "codex":
@@ -201,7 +227,10 @@ def main():
     for agent, worker in AGENTS.items():
         tokens, cost, status = query(agent, args.since)
         logged, source = logins.get(agent, (None, "sin datos"))
-        lims = limits(agent) if logged is not False else []
+        rec = omarchy_record(agent)
+        if rec and isinstance(rec.get("ready"), bool) and source != "forzado en auth.toml":
+            logged, source = rec["ready"], "panel de agentes de Omarchy"
+        lims = limits(agent, rec) if logged is not False else []
         live = [w["pct"] for w in lims if not (w.get("resets_at") and w["resets_at"] <= time.time())]
         rows.append({
             "agent": agent,

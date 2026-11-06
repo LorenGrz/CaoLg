@@ -54,9 +54,15 @@ tmux source-file "$here/../tmux/caolg-keys.conf"
 
 if [[ "${CAO_WT_GREET:-1}" == 1 ]]; then
   sleep 3
-  cao session send "$s" --async \
-    "Presentate en 3 líneas: carpeta, rama y workers que podés abrir. Si $roles está vacío o no existe, leé el repo y creá ahí los roles que tengan sentido (front.md, back.md, reviewer.md…) y decime cuáles creaste. Después esperá mi tarea." \
-    >/dev/null 2>&1
+  # El saludo es barato: carpeta, rama y roles ya van en el mensaje. Solo si faltan roles lee el repo
+  # (eso era lo caro: ~40k tokens de contexto en cada apertura).
+  list=$(ls "$roles" 2>/dev/null | sed -n 's/\.md$//p' | paste -sd, - | sed 's/,/, /g')
+  if [[ -n "$list" ]]; then
+    msg="Estás en $wt (rama $branch). Roles de la carpeta: $list (en $roles). No leas nada todavía: respondé una sola línea «Listo · $(basename "$wt") · $branch · roles: $list» y esperá mi tarea."
+  else
+    msg="Estás en $wt (rama $branch). $roles está vacío: leé lo justo del repo (README, AGENTS.md, estructura de carpetas) y creá ahí los roles que tengan sentido (front.md, back.md, reviewer.md…). Respondé en una línea cuáles creaste y esperá mi tarea."
+  fi
+  cao session send "$s" --async "$msg" >/dev/null 2>&1
 fi
 
 exec "$here/caolg-watch" "$s"

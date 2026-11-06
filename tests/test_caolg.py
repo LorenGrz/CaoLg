@@ -104,6 +104,17 @@ class TestCaolg(unittest.TestCase):
         self.assertIsNone(L.ctx_from_statusline(None))
         self.assertIsNone(L.ctx_from_statusline({"used_percentage": None}))
 
+    def test_omarchy_limits(self):
+        rec = {"limits": [{"label": "Session (5-hour)", "percent": 0.18, "resetsAt": "2026-11-06T17:20:00+00:00"},
+                          {"label": "Weekly (7-day)", "percent": 0.03, "resetsAt": "2026-11-11T08:00:00+00:00"},
+                          {"label": "Fable Weekly", "percent": 0.0},
+                          {"label": "Monthly allowance", "percent": 0.5, "resetsAt": "2026-11-30T21:00:00-03:00"}]}
+        out = L.omarchy_limits(rec)
+        self.assertEqual([(w["label"], round(w["pct"])) for w in out], [("5h", 18), ("7d", 3), ("mes", 50)])
+        self.assertEqual(out[2]["resets_at"], L.to_epoch("2026-12-01T00:00:00+00:00"))
+        self.assertEqual(L.omarchy_limits({"limits": [{"label": "Weekly (7-day)", "percent": None}]}), [])
+        self.assertEqual(L.omarchy_limits(None), [])
+
     def test_time_left(self):
         self.assertEqual(L.time_left(None, 0), "--")
         self.assertEqual(L.time_left(100, 200), "--")
