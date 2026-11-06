@@ -72,7 +72,10 @@ class TestCaolg(unittest.TestCase):
         self.assertIn("7d #[fg=" + c["green"] + "]1%#[fg=" + c["muted"] + "] 4d18h", bar)
         self.assertNotIn("codex", bar)  # sin login: no aparece
         plain = re.sub(r"#\[[^]]*\]", "", bar)
-        self.assertEqual([x.split()[0] for x in plain.split("|")], ["claude", "agy", "copilot"])
+        self.assertEqual([x.split()[0] for x in plain.split("|")], ["claude", "copilot", "agy"])
+        usage["providers"][1]["logged_in"] = True  # codex con login va segundo
+        plain = re.sub(r"#\[[^]]*\]", "", L.build_bar(usage, c, now))
+        self.assertEqual([x.split()[0] for x in plain.split("|")], ["claude", "codex", "copilot", "agy"])
         self.assertIn("agy#[nobold] #[fg=" + c["muted"] + "]n/d", bar)
         self.assertIn("mes #[fg=" + c["green"] + "]0%", bar)  # ya se reseteó
         for gone in ("hoy", "$", "agentes", "sesión"):
@@ -115,6 +118,12 @@ class TestCaolg(unittest.TestCase):
         self.assertEqual(out[2]["resets_at"], L.to_epoch("2026-12-01T00:00:00+00:00"))
         self.assertEqual(L.omarchy_limits({"limits": [{"label": "Weekly (7-day)", "percent": None}]}), [])
         self.assertEqual(L.omarchy_limits(None), [])
+
+    def test_omarchy_limits_agy_is_nd(self):
+        # Google no informa cupo de Gemini: el único bucket es el de Claude/GPT dentro de Antigravity.
+        rec = {"limits": [{"label": "Weekly (7-day)", "percent": 0.0, "resetsAt": "2026-11-13T20:06:15+00:00"}]}
+        self.assertEqual(L.omarchy_limits(rec, "antigravity"), [])
+        self.assertEqual(len(L.omarchy_limits(rec, "claude")), 1)
 
     def test_time_left(self):
         self.assertEqual(L.time_left(None, 0), "--")
