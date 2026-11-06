@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -68,7 +69,9 @@ class TestCaolg(unittest.TestCase):
         bar = L.build_bar(usage, c, now)
         self.assertIn(f"5h #[fg={c['green']}]8%#[fg={c['muted']}] 4h07m", bar)
         self.assertIn("7d #[fg=" + c["green"] + "]1%#[fg=" + c["muted"] + "] 4d18h", bar)
-        self.assertIn("codex#[nostrikethrough] sin login", bar)
+        self.assertNotIn("codex", bar)  # sin login: no aparece
+        plain = re.sub(r"#\[[^]]*\]", "", bar)
+        self.assertEqual([x.split()[0] for x in plain.split("|")], ["claude", "agy", "copilot"])
         self.assertIn("agy#[nobold] #[fg=" + c["muted"] + "]n/d", bar)
         self.assertIn("mes #[fg=" + c["green"] + "]0%", bar)  # ya se reseteó
         for gone in ("hoy", "$", "agentes", "sesión"):

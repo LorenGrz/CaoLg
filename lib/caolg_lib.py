@@ -306,18 +306,21 @@ def pct_color(pct, colors):
     return colors["red"] if pct >= 80 else colors["yellow"] if pct >= 50 else colors["green"]
 
 
+BAR_ORDER = ("claude", "antigravity", "copilot", "opencode", "codex")
+
+
 def build_bar(usage, colors, now=None):
     """Línea 2 de la barra: el cupo de cada suscripción, p. ej.
-    'claude 5h 8% 4h07m · 7d 1% 4d18h │ copilot mes 3% 24d │ codex sin login'. Sin tokens ni precios."""
+    'claude 5h 8% 4h07m · 7d 1% 4d18h | agy n/d | copilot mes 3% 24d'. Sin tokens ni precios."""
     import time
     now = time.time() if now is None else now
     fg, muted = colors["foreground"], colors["muted"]
     parts = []
-    for p in (usage or {}).get("providers", []):
+    # Solo las suscripciones con login, en el orden de BAR_ORDER (las que no figuran, al final).
+    provs = [p for p in (usage or {}).get("providers", []) if p.get("logged_in") is True]
+    provs.sort(key=lambda p: BAR_ORDER.index(p["agent"]) if p["agent"] in BAR_ORDER else len(BAR_ORDER))
+    for p in provs:
         name = USAGE_SHORT.get(p["agent"], p["agent"])
-        if p.get("logged_in") is False:  # el líder no lo usa hasta que Loren se loguee
-            parts.append(f"#[fg={muted},strikethrough]{name}#[nostrikethrough] sin login")
-            continue
         wins = []
         for w in p.get("limits") or []:
             reset = w.get("resets_at")
@@ -327,4 +330,4 @@ def build_bar(usage, colors, now=None):
         parts.append(f"#[fg={fg},bold]{name}#[nobold] {body}")
     if not parts:
         return f"#[fg={muted}] cupos n/d "
-    return " " + f" #[fg={muted}]│ ".join(parts) + " "
+    return " " + f" #[fg={muted}]| ".join(parts) + " "
