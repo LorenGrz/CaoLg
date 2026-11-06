@@ -15,6 +15,7 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 - `bin/caolg-layout`, `bin/caolg-theme`, `bin/caolg-clear`: hook de layout (llama a `caolg-tabs sync`), colores del tema de Omarchy, `/clear` con resumen.
 - tmux 3.8: opciones de sesión con `-t "=<s>:"` (no `=<s>`). La marca de CAO del supervisor es de ventana y se hereda: resolver con `owner_marks`.
 - `lib/caolg_lib.py`: funciones puras (tema, transcripts, barra). `tests/test_caolg.py`.
+- `bin/caolg-patch-cao` + `lib/cao_patches.py`: parches locales a CAO 2.5.4 (Copilot en pane angosto, ADR 0006). Los aplica `install.sh`; hay que reiniciar cao-server.
 - `tmux/caolg-keys.conf`: atajos que solo actúan en sesiones `cao-*`.
 - `omarchy/50-caolg-theme`: hook `theme-set`.
 - `codex/cao-safe.config.toml`: perfil de Codex sin `--yolo`.
@@ -30,5 +31,5 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 - Después de cada cambio: tests + `bash -n`, commit (Conventional Commits) y push a `main` sin preguntar (pedido de Loren).
 - Repo público: nunca secretos ni copias de `~/.claude`, `~/.codex`, `~/.copilot`, `~/.gemini`.
 - Nunca `cao launch --yolo` ni `allowedTools: ["*"]`.
-- CAO pineado en 2.5.4 (ADR 0002). Subir de versión exige repetir la verificación del plan visual.
+- CAO pineado en 2.5.4 (ADR 0002) y parcheado (ADR 0006). Subir de versión exige repetir la verificación del plan visual y revisar si el parche sigue haciendo falta.
 - Verificar con: `python3 -m unittest discover tests` y `bash -n` sobre los scripts bash de `bin/`.

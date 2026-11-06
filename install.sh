@@ -8,6 +8,8 @@ CAO_VERSION=2.5.4   # el truco de la marca (ADR 0002) depende de internals de es
 if ! cao -V 2>/dev/null | grep -q "$CAO_VERSION"; then
   uv tool install "cli-agent-orchestrator==$CAO_VERSION"
 fi
+# Parches locales a CAO (idempotente; ADR 0006). Si CAO cambió de formato, avisa y no toca nada.
+"$here/bin/caolg-patch-cao" || echo "caolg-patch-cao: sin aplicar, ver ADR 0006" >&2
 
 # Modo pane: los workers se suman como panes a la ventana "caolg" (donde caolg-session deja a Opus).
 cao config set terminal.spawn_mode pane >/dev/null
