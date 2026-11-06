@@ -154,12 +154,13 @@ def display_model(term):
 
 
 def pane_label(term, conductor_id, role=None):
-    """Texto del borde: '<modelo> · líder' para Opus, '<modelo> · <rol>' para el resto. `role` pisa el de CAO
-    (Alt+i). Nada de precio ni contexto: eso lo muestra cada CLI abajo (statusline)."""
+    """Texto del borde: 'líder (<modelo>)' para Opus, '<rol> (<modelo>)' para el resto (el número de tab lo
+    antepone quien lo dibuja). `role` pisa el de CAO (Alt+i). Nada de precio ni contexto: eso lo muestra cada
+    CLI abajo (statusline)."""
     if term["id"] == conductor_id:
-        return f"{display_model(term)} · líder"
+        return f"líder ({display_model(term)})"
     role = role or term.get("description") or term.get("agent_profile") or "?"
-    return f"{display_model(term)} · {role}"
+    return f"{role} ({display_model(term)})"
 
 
 # ── Tabs de la mitad derecha (bin/caolg-tabs) ──────────────────────────────
@@ -237,7 +238,7 @@ def pick_visible(candidates):
 
 
 def tab_strip(tabs, visible_id, colors):
-    """Formato tmux del borde superior de la mitad derecha: ' 2 front · agy  3 zsh '.
+    """Formato tmux del borde superior de la mitad derecha: ' 2 front (agy)  3 zsh '.
     tabs: [{'id', 'label', 'color', 'where'?}] ya ordenadas. La visible va resaltada con el color de su provider
     y además muestra 'where' (carpeta y rama); las otras no, para que la tira no desborde."""
     parts = []

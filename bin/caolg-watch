@@ -135,7 +135,7 @@ def paint(s, session, colors, warn=None):
             tmux("set", "-p", "-t", pid, "@caolg_label", label)
             tmux("set", "-p", "-t", pid, "@caolg_where", where)
             if t["id"] == conductor:  # las tabs de la derecha las pinta caolg-tabs strip
-                full = f"{label} · {where}" if where else label
+                full = f"1 {label} · {where}" if where else f"1 {label}"  # Alt+1
                 tmux("set", "-p", "-t", pid, "pane-border-format",
                      f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {full} #[default]")
                 tmux("set", "-p", "-t", pid, "pane-active-border-style", f"fg={color}")
