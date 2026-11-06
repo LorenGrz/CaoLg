@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import caolg_lib as L  # noqa: E402
+import cao_patches as P  # noqa: E402
 
 
 class TestCaolg(unittest.TestCase):
@@ -128,16 +129,16 @@ class TestCaolg(unittest.TestCase):
         self.assertEqual(L.display_model({"model": None, "provider": "codex"}), "codex")
 
     def test_pane_label(self):
-        self.assertEqual(L.pane_label({"id": "a", "model": "opus"}, "a"), "Opus 5.5 · líder")
+        self.assertEqual(L.pane_label({"id": "a", "model": "opus"}, "a"), "líder (Opus 5.5)")
         self.assertEqual(L.pane_label({"id": "b", "provider": "claude_code", "model": "sonnet",
-                                       "description": "front"}, "a"), "Sonnet 5.5 · front")
+                                       "description": "front"}, "a"), "front (Sonnet 5.5)")
         self.assertEqual(L.pane_label({"id": "c", "provider": "codex", "agent_profile": "codex-dev"}, "a"),
-                         "codex · codex-dev")
+                         "codex-dev (codex)")
 
     def test_pane_label_role_override(self):
         term = {"id": "b", "provider": "codex", "description": "front"}
-        self.assertEqual(L.pane_label(term, "a", "reviewer"), "codex · reviewer")
-        self.assertEqual(L.pane_label(term, "a", None), "codex · front")
+        self.assertEqual(L.pane_label(term, "a", "reviewer"), "reviewer (codex)")
+        self.assertEqual(L.pane_label(term, "a", None), "front (codex)")
 
     def test_where_label(self):
         self.assertEqual(L.where_label("/home/l/reino/cx-reino", None), "cx-reino")
@@ -196,12 +197,32 @@ class TestCaolg(unittest.TestCase):
         self.assertIn(f"bg={L.DEFAULT_COLORS['muted']},bold] 3 zsh ", s)
 
     def test_tab_strip_where_only_on_visible(self):
-        tabs = [{"id": "%1", "label": "Sonnet 5.5 · front", "where": "wt-front (dev)", "color": "#00f"},
-                {"id": "%2", "label": "codex · back", "where": "wt-back (main)", "color": "#0f0"}]
+        tabs = [{"id": "%1", "label": "front (Sonnet 5.5)", "where": "wt-front (dev)", "color": "#00f"},
+                {"id": "%2", "label": "back (codex)", "where": "wt-back (main)", "color": "#0f0"}]
         s = L.tab_strip(tabs, "%1", L.DEFAULT_COLORS)
-        self.assertIn(" 2 Sonnet 5.5 · front · wt-front (dev) ", s)
-        self.assertIn("#[fg=#0f0] 3 codex · back ", s)
+        self.assertIn(" 2 front (Sonnet 5.5) · wt-front (dev) ", s)
+        self.assertIn("#[fg=#0f0] 3 back (codex) ", s)
         self.assertNotIn("wt-back", s)
+
+    def test_patch_copilot_hint_bar(self):
+        orig = ('COPILOT_HINT_BAR_PATTERN = (\n'
+                '    r"^(?:v\\d+\\.\\d+\\.\\d+(?:-[0-9a-z.-]+)? downloaded\\s*[·•]\\s*"\n'
+                '    r"next launch or /restart\\s*[·•]\\s*)?"\n'
+                '    r"←.*[·•]\\s*/ commands\\b"\n'
+                ')\n')
+        patched = P.patch_copilot_hint_bar(orig)
+        self.assertNotEqual(patched, orig)
+        self.assertEqual(P.patch_copilot_hint_bar(patched), patched)  # idempotente
+        ns = {}
+        exec(patched, ns)
+        pat = ns["COPILOT_HINT_BAR_PATTERN"]
+        ok = ["autopilot · allow all · / … copilot-dev · copilot fus…",
+              "interactive · manual approval · / comm… copilot-dev · copilot fusion",
+              "← open sidebar · interactive · manual approval · / commands · ? help"]
+        for bar in ok:
+            self.assertTrue(re.search(pat, bar), bar)
+        self.assertFalse(re.search(pat, "autopilot mode is great"))
+        self.assertIsNone(P.patch_copilot_hint_bar("otra cosa"))  # CAO cambió: no tocar
 
 
 if __name__ == "__main__":

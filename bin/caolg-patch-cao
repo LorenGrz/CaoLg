@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""caolg-patch-cao [--check]: aplica los parches locales de lib/cao_patches.py al CAO instalado (uv tool).
+Idempotente. --check: solo dice si hace falta. Después de parchear hay que reiniciar cao-server (la próxima
+vez que abras caolg arranca con el parche). Ver ADR 0006."""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(os.path.realpath(__file__)).parent.parent / "lib"))
+import cao_patches as P  # noqa: E402
+
+CAO_PY = Path.home() / ".local/share/uv/tools/cli-agent-orchestrator/bin/python"
+
+
+def module_file(mod):
+    out = subprocess.run([str(CAO_PY), "-c", f"import {mod} as m; print(m.__file__)"],
+                         capture_output=True, text=True)
+    return Path(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
+
+
+def main():
+    check = "--check" in sys.argv
+    target = module_file("cli_agent_orchestrator.providers.copilot_cli") if CAO_PY.exists() else None
+    if not target:
+        sys.exit("caolg-patch-cao: no encontré CAO instalado con uv tool")
+    src = target.read_text()
+    new = P.patch_copilot_hint_bar(src)
+    if new is None:
+        sys.exit(f"caolg-patch-cao: {target.name} no tiene el formato de CAO 2.5.4; no lo toco (revisá ADR 0006)")
+    if new == src:
+        print("caolg-patch-cao: copilot_cli ya parcheado")
+        return
+    if check:
+        print("caolg-patch-cao: copilot_cli sin parchear")
+        sys.exit(1)
+    target.write_text(new)
+    for pyc in target.parent.glob(f"__pycache__/{target.stem}.*.pyc"):
+        pyc.unlink(missing_ok=True)
+    print(f"caolg-patch-cao: parcheado {target} (reiniciá cao-server para que lo tome)")
+
+
+if __name__ == "__main__":
+    main()
