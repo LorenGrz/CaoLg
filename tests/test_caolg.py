@@ -139,6 +139,18 @@ class TestCaolg(unittest.TestCase):
         self.assertEqual(L.pane_label(term, "a", "reviewer"), "codex · reviewer")
         self.assertEqual(L.pane_label(term, "a", None), "codex · front")
 
+    def test_where_label(self):
+        self.assertEqual(L.where_label("/home/l/reino/cx-reino", None), "cx-reino")
+        self.assertEqual(L.where_label("/x/wt-front/", "dev"), "wt-front (dev)")
+        long = "fix/monitor-ver-mas-reconexion-panel-agente"
+        self.assertEqual(L.where_label("/x/wt", long, 20), "wt (fix/monitor-ver-mas…)")
+        self.assertEqual(L.where_label("", "dev"), "")
+
+    def test_cwd_from_statusline(self):
+        self.assertEqual(L.cwd_from_statusline({"cwd": "/a/b"}), "/a/b")
+        self.assertIsNone(L.cwd_from_statusline({"used_percentage": 3}))
+        self.assertIsNone(L.cwd_from_statusline(None))
+
     def test_tab_keys(self):
         self.assertEqual([L.tab_key(i) for i in range(10)], ["2", "3", "4", "5", "6", "7", "8", "9", "0", ""])
         self.assertEqual([L.key_to_pos(k) for k in "1234567890"], [None, 0, 1, 2, 3, 4, 5, 6, 7, 8])
@@ -182,6 +194,14 @@ class TestCaolg(unittest.TestCase):
         s = L.tab_strip(tabs, "%2", L.DEFAULT_COLORS)
         self.assertIn("#[fg=#00f] 2 front · agy ", s)
         self.assertIn(f"bg={L.DEFAULT_COLORS['muted']},bold] 3 zsh ", s)
+
+    def test_tab_strip_where_only_on_visible(self):
+        tabs = [{"id": "%1", "label": "Sonnet 5.5 · front", "where": "wt-front (dev)", "color": "#00f"},
+                {"id": "%2", "label": "codex · back", "where": "wt-back (main)", "color": "#0f0"}]
+        s = L.tab_strip(tabs, "%1", L.DEFAULT_COLORS)
+        self.assertIn(" 2 Sonnet 5.5 · front · wt-front (dev) ", s)
+        self.assertIn("#[fg=#0f0] 3 codex · back ", s)
+        self.assertNotIn("wt-back", s)
 
 
 if __name__ == "__main__":

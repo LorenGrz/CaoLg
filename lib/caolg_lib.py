@@ -104,6 +104,24 @@ def ctx_from_statusline(data):
         return None
 
 
+def cwd_from_statusline(data):
+    """Carpeta actual de la sesión de Claude (sigue los `cd` del agente, CAO no) según la statusline, o None."""
+    cwd = (data or {}).get("cwd")
+    return cwd if isinstance(cwd, str) and cwd else None
+
+
+def where_label(path, branch=None, max_branch=28):
+    """'wt-front-monitor (fix/monitor-ver…)': carpeta (raíz del repo si es git) y rama recortada. '' sin carpeta."""
+    name = os.path.basename((path or "").rstrip("/"))
+    if not name:
+        return ""
+    if not branch:
+        return name
+    if len(branch) > max_branch:
+        branch = branch[: max_branch - 1] + "…"
+    return f"{name} ({branch})"
+
+
 def ctx_warning(pct, warn_at):
     """Aviso para el borde de Opus cuando su contexto pasó el límite; None si no hay que avisar."""
     if not warn_at or pct is None or pct < warn_at:
@@ -220,11 +238,15 @@ def pick_visible(candidates):
 
 def tab_strip(tabs, visible_id, colors):
     """Formato tmux del borde superior de la mitad derecha: ' 2 front · agy  3 zsh '.
-    tabs: [{'id', 'label', 'color'}] ya ordenadas. La visible va resaltada con el color de su provider."""
+    tabs: [{'id', 'label', 'color', 'where'?}] ya ordenadas. La visible va resaltada con el color de su provider
+    y además muestra 'where' (carpeta y rama); las otras no, para que la tira no desborde."""
     parts = []
     for pos, t in enumerate(tabs):
         key = tab_key(pos)
-        txt = f" {key} {t['label']} " if key else f" {t['label']} "
+        label = t["label"]
+        if t["id"] == visible_id and t.get("where"):
+            label = f"{label} · {t['where']}"
+        txt = f" {key} {label} " if key else f" {label} "
         c = t.get("color") or colors["muted"]
         if t["id"] == visible_id:
             parts.append(f"#[fg={colors['background']},bg={c},bold]{txt}#[default]")
