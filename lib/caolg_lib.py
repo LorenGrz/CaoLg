@@ -325,10 +325,17 @@ def copilot_limits(user):
              "resets_at": to_epoch(user.get("quota_reset_date_utc") or user.get("quota_reset_date"))}]
 
 
-def omarchy_limits(record):
+# Agentes cuyo cupo en Omarchy no es el del plan. agy: Google no informa ventana para los modelos Gemini y
+# Omarchy muestra en su lugar el bucket de Claude/GPT dentro de Antigravity (siempre ~0%). Ver ADR 0007.
+QUOTA_NOT_REPORTED = {"antigravity"}
+
+
+def omarchy_limits(record, agent=None):
     """Registro de Omarchy (~/.local/state/omarchy/agents/usage/<agente>.json, lo mantiene su panel de
     agentes) -> ventanas normalizadas. `percent` viene como fracción (0.18 = 18%). Solo 5h, 7d y mes:
-    los cupos por modelo (p. ej. 'Fable Weekly') no entran en la barra."""
+    los cupos por modelo (p. ej. 'Fable Weekly') no entran en la barra. Agentes de QUOTA_NOT_REPORTED: []."""
+    if agent in QUOTA_NOT_REPORTED:
+        return []
     out = []
     for lim in (record or {}).get("limits") or []:
         label = lim.get("label") or ""
@@ -365,7 +372,8 @@ def pct_color(pct, colors):
     return colors["red"] if pct >= 80 else colors["yellow"] if pct >= 50 else colors["green"]
 
 
-BAR_ORDER = ("claude", "antigravity", "copilot", "opencode", "codex")
+# claude, codex y copilot primero: los que tienen cupo real; agy y opencode (n/d) al final.
+BAR_ORDER = ("claude", "codex", "copilot", "antigravity", "opencode")
 
 
 def build_bar(usage, colors, now=None):
