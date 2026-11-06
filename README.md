@@ -22,21 +22,21 @@ Detección: `claude auth status`, `codex login status`, `opencode auth list`; Co
 ## Uso
 
 ```bash
-cd ~/projects/<repo> && codes         # repo git: worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
-                                      # (si ya existe, se adjunta; dentro de un worktree de caolg, a esa sesión)
-cd ~/cualquier/carpeta && codes       # sin git: trabaja ahí mismo, como claude (sin worktree), sesión cao-<carpeta>
-codes open                            # lo mismo en una terminal nueva
-caolg open ~/projects/<repo> <slug>   # repo y nombre explícitos, terminal nueva
-caolg here ~/projects/<repo> <slug>   # repo y nombre explícitos, esta terminal
-caolg ls                              # sesiones activas (web UI: http://localhost:9889)
-caolg usage                           # uso por suscripción
-caolg rm                              # cierra la sesión de la carpeta actual y borra su worktree
-caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
+cd ~/projects/<repo> && claudes         # repo git: worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
+                                        # (si ya existe, se adjunta; dentro de un worktree de caolg, a esa sesión)
+cd ~/cualquier/carpeta && claudes       # sin git: trabaja ahí mismo, como claude (sin worktree), sesión cao-<carpeta>
+claudes open                            # lo mismo en una terminal nueva
+caolg open ~/projects/<repo> <slug>     # repo y nombre explícitos, terminal nueva
+caolg here ~/projects/<repo> <slug>     # repo y nombre explícitos, esta terminal
+caolg ls                                # sesiones activas (web UI: http://localhost:9889)
+caolg usage                             # uso por suscripción
+caolg rm                                # cierra la sesión de la carpeta actual y borra su worktree
+caolg rm ~/projects/<repo> <slug>       # lo mismo, explícito
 ```
 
 `cao-server` se levanta solo si no está corriendo (log en `~/.cache/caolg/cao-server.log`).
 
-**Cerrar la terminal cierra todo, como Claude Code:** Opus guarda su estado en `state.md` (si no está a mitad de una respuesta), se apagan la sesión, los workers y el watcher y, si no queda ninguna sesión `cao-*`, también el `cao-server` que levantó caolg. Quedan los archivos: worktree y rama, roles, `state.md` y transcripts. Para dejarla viva al desconectarte (tmux clásico): `CAOLG_KEEP=1 codes`.
+**Cerrar la terminal cierra todo, como Claude Code:** Opus guarda su estado en `state.md` (si no está a mitad de una respuesta), se apagan la sesión, los workers y el watcher y, si no queda ninguna sesión `cao-*`, también el `cao-server` que levantó caolg. Quedan los archivos: worktree y rama, roles, `state.md` y transcripts. Para dejarla viva al desconectarte (tmux clásico): `CAOLG_KEEP=1 claudes`.
 
 ### Layout
 
@@ -90,7 +90,7 @@ Variables: `CAO_WT_GREET=0` (sin saludo), `CAOLG_WARN_AT` (0 sin aviso), `CAOLG_
 | gemini-dev | `antigravity_cli` | CAO fuerza bypass de permisos: solo en el worktree |
 | opencode-dev | `opencode_cli` | permisos allow/deny fijados al instalar (experimental) |
 
-Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. En repos git ningún agente corre en el checkout principal (siempre worktree). En carpetas sin git trabajan en la carpeta misma, sin red de seguridad de git: `codes` pide confirmación si la carpeta es `~` o `/`.
+Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. En repos git ningún agente corre en el checkout principal (siempre worktree). En carpetas sin git trabajan en la carpeta misma, sin red de seguridad de git: `claudes` pide confirmación si la carpeta es `~` o `/`.
 
 ## Decisiones
 

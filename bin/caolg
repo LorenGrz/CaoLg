@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# caolg (alias: codes): punto de entrada único.
-#   codes                              desde la carpeta actual, en esta terminal (si la sesión existe, se adjunta):
-#                                        repo git -> worktree aislado <repo>-wt/<repo> + sesión cao-<repo>
-#                                        carpeta sin git -> trabaja ahí mismo, como claude, sesión cao-<carpeta>
-#   codes open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
-#   codes here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
-#   codes rm [<repo> <slug>]           cierra la sesión (y borra el worktree si es repo); sin args: carpeta actual
-#   codes ls                           sesiones activas
-#   codes usage [--json]               uso y login por suscripción
-#   codes server                       levanta cao-server en primer plano
+# caolg (alias: claudes): punto de entrada único.
+#   claudes                              desde la carpeta actual, en esta terminal (si la sesión existe, se adjunta):
+#                                          repo git -> worktree aislado <repo>-wt/<repo> + sesión cao-<repo>
+#                                          carpeta sin git -> trabaja ahí mismo, como claude, sesión cao-<carpeta>
+#   claudes open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
+#   claudes here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
+#   claudes rm [<repo> <slug>]           cierra la sesión (y borra el worktree si es repo); sin args: carpeta actual
+#   claudes ls                           sesiones activas
+#   claudes usage [--json]               uso y login por suscripción
+#   claudes server                       levanta cao-server en primer plano
 set -euo pipefail
 me=$(basename "$0")
 

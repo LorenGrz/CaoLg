@@ -8,7 +8,7 @@ s=$1
 CACHE=~/.cache/caolg
 mkdir -p "$CACHE"
 
-sleep 1  # dar tiempo a que otra terminal (codes open sobre la misma sesión) siga conectada
+sleep 1  # dar tiempo a que otra terminal (claudes open sobre la misma sesión) siga conectada
 
 # La sesión puede seguir viva (cerrar la terminal solo desconecta tmux) o ya haberla cerrado CAO.
 if tmux has-session -t "=$s" 2>/dev/null; then
