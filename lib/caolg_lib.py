@@ -96,47 +96,6 @@ def opus_context_tokens(cwd, since=0.0):
     return 0 if since else None
 
 
-def short_model(name):
-    """'claude-opus-5-5' -> 'opus', 'claude-sonnet-5-5' -> 'sonnet'; el resto tal cual."""
-    for k in ("opus", "sonnet", "haiku", "fable"):
-        if k in (name or ""):
-            return k
-    return name or "?"
-
-
-def claude_costs_for_path(sessions_json, cwd):
-    """Costo exacto por modelo (opus/sonnet…) de las sesiones de Claude Code cuyo cwd es `cwd`."""
-    encoded = transcript_dir(cwd).name
-    costs = {}
-    for s in (sessions_json or {}).get("sessions", []):
-        if s.get("projectPath") != encoded:
-            continue
-        for m in s.get("modelBreakdowns") or []:
-            k = short_model(m.get("modelName"))
-            costs[k] = costs.get(k, 0.0) + (m.get("cost") or 0.0)
-    return costs
-
-
-def cost_since(sessions_json, since_iso):
-    """Costo de las sesiones con actividad desde `since_iso` (ISO UTC). Aproximado: providers sin ruta."""
-    total = 0.0
-    for s in (sessions_json or {}).get("sessions", []):
-        last = s.get("lastActivity") or s.get("firstActivity") or ""
-        if last and last >= since_iso:
-            total += s.get("totalCost") or s.get("costUSD") or 0.0
-    return total
-
-
-def session_cost_text(costs, colors):
-    """'sesión $1.69 (opus 1.23 · sonnet 0.40 · agy≈0.06)' con estilos de tmux. costs: {nombre: (usd, exacto)}."""
-    if not costs:
-        return f"#[fg={colors['muted']}]sesión $0.00"
-    total = sum(v for v, _ in costs.values())
-    parts = [f"{k}{'' if exact else '≈'}{v:.2f}" for k, (v, exact) in costs.items() if v >= 0.005]
-    detail = f" #[fg={colors['muted']}]({' · '.join(parts)})" if parts else ""
-    return f"#[fg={colors['yellow']},bold]sesión ${total:.2f}#[nobold]{detail}"
-
-
 def human(n):
     if n is None:
         return "n/d"
@@ -146,12 +105,28 @@ def human(n):
     return str(n)
 
 
+# Alias de CAO (model: opus en el perfil) -> nombre a mostrar.
+CLAUDE_MODELS = {"opus": "Opus 5.5", "sonnet": "Sonnet 5.5", "haiku": "Haiku 5.5", "fable": "Fable 5.1"}
+
+
+def display_model(term):
+    """'Opus 5.5', 'Sonnet 5.5'…; un id completo ('claude-opus-5-5') también. Sin modelo: el provider."""
+    model = (term.get("model") or "").strip()
+    m = re.fullmatch(r"claude-([a-z]+)-(\d+)-(\d+)(?:-\d+)?", model)
+    if m:
+        return f"{m.group(1).capitalize()} {m.group(2)}.{m.group(3)}"
+    if model:
+        return CLAUDE_MODELS.get(model, model)
+    return provider_short(term.get("provider"))
+
+
 def pane_label(term, conductor_id, role=None):
-    """Texto del borde del pane: 'Opus · líder' o '<rol> · <provider>'. `role` pisa el de CAO (Alt+i)."""
+    """Texto del borde: '<modelo> · líder' para Opus, '<modelo> · <rol>' para el resto. `role` pisa el de CAO
+    (Alt+i). Nada de precio ni contexto: eso lo muestra cada CLI abajo (statusline)."""
     if term["id"] == conductor_id:
-        return "Opus · líder"
+        return f"{display_model(term)} · líder"
     role = role or term.get("description") or term.get("agent_profile") or "?"
-    return f"{role} · {provider_short(term.get('provider'))}"
+    return f"{display_model(term)} · {role}"
 
 
 # ── Tabs de la mitad derecha (bin/caolg-tabs) ──────────────────────────────
@@ -243,28 +218,10 @@ def tab_strip(tabs, visible_id, colors):
     return "".join(parts)
 
 
-def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None, roles=None, tab_colors=None):
-    """Línea 2 de la barra: agentes, contexto de Opus y usage (con estilos de tmux).
-    El color del contexto es relativo al umbral del /clear automático: amarillo al 75%, rojo al llegar."""
+def build_bar(usage, colors):
+    """Línea 2 de la barra: solo el uso de hoy por CLI (con estilos de tmux). Contexto y gasto de cada agente
+    los muestra su propia statusline, abajo de su pane."""
     fg, muted = colors["foreground"], colors["muted"]
-    terms = session.get("terminals", [])
-    conductor = terms[0]["id"] if terms else None
-    agents = []
-    for t in terms[1:]:
-        icon = STATUS_ICON.get(t.get("status"), "?")
-        c = (colors["red"] if t.get("status") == "error" else
-             (tab_colors or {}).get(t["id"]) or provider_color(t.get("provider"), colors))
-        agents.append(f"#[fg={c}]{pane_label(t, conductor, (roles or {}).get(t['id']))}{icon}")
-    left = " ".join(agents) if agents else f"#[fg={muted}](sin workers)"
-
-    if ctx_pct is None:
-        ctx = f"#[fg={muted}]Opus ctx n/d"
-    else:
-        limit = clear_at or 100
-        c = (colors["red"] if ctx_pct >= limit else
-             colors["yellow"] if ctx_pct >= limit * 0.75 else colors["green"])
-        ctx = f"#[fg={c}]Opus ctx {ctx_pct}%"
-
     use = []
     for p in (usage or {}).get("providers", []):
         name = USAGE_SHORT.get(p["agent"], p["agent"])
@@ -273,8 +230,4 @@ def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None, 
             continue
         cost = "" if not p.get("cost_usd") else f" ${p['cost_usd']:.2f}"
         use.append(f"{name} {human(p.get('tokens'))}{cost}")
-    usage_txt = "hoy: " + " · ".join(use) if use else "hoy: usage n/d"
-
-    sep = f"#[fg={muted}] │ "
-    cost = session_cost_text(session_costs, colors) + sep if session_costs is not None else ""
-    return f"#[fg={fg}] agentes: {left}{sep}{ctx}{sep}{cost}#[fg={muted}]{usage_txt} "
+    return f"#[fg={fg}] hoy: " + (" · ".join(use) if use else f"#[fg={muted}]usage n/d") + " "

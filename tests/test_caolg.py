@@ -35,75 +35,12 @@ class TestCaolg(unittest.TestCase):
     def test_load_colors_without_file(self):
         self.assertEqual(L.load_colors("/no/existe.toml"), L.DEFAULT_COLORS)
 
-    def test_build_bar(self):
-        colors = L.DEFAULT_COLORS
-        session = {"terminals": [
-            {"id": "a", "provider": "claude_code", "agent_profile": "supervisor", "status": "idle"},
-            {"id": "b", "provider": "antigravity_cli", "agent_profile": "gemini-dev",
-             "description": "front", "status": "processing"},
-        ]}
-        usage = {"providers": [{"agent": "claude", "tokens": 25_880_496, "cost_usd": 13.65},
-                               {"agent": "codex", "tokens": 0, "cost_usd": 0.0}]}
-        bar = L.build_bar(session, 42, usage, colors)
-        self.assertIn("front · agy●", bar)
-        self.assertIn("Opus ctx 42%", bar)
-        self.assertIn("claude 25.9M $13.65", bar)
-        self.assertIn("codex 0", bar)
-        self.assertNotIn("supervisor", bar)
-
-    def test_build_bar_empty(self):
-        bar = L.build_bar({"terminals": []}, None, None, L.DEFAULT_COLORS)
-        self.assertIn("(sin workers)", bar)
-        self.assertIn("Opus ctx n/d", bar)
-
-    def test_status_icons(self):
-        session = {"terminals": [
-            {"id": "a", "provider": "claude_code"},
-            {"id": "b", "provider": "codex", "description": "back", "status": "waiting_user_answer"},
-            {"id": "c", "provider": "copilot_cli", "description": "rev", "status": "unknown"},
-        ]}
-        bar = L.build_bar(session, 5, None, L.DEFAULT_COLORS)
-        self.assertIn("back · codex⚠", bar)
-        self.assertIn("rev · copilot◌", bar)
-
-    def test_ctx_color_relative_to_clear_threshold(self):
-        c = L.DEFAULT_COLORS
-        bar = lambda pct: L.build_bar({"terminals": []}, pct, None, c, clear_at=40)  # noqa: E731
-        self.assertIn(f"#[fg={c['green']}]Opus ctx 10%", bar(10))
-        self.assertIn(f"#[fg={c['yellow']}]Opus ctx 30%", bar(30))
-        self.assertIn(f"#[fg={c['red']}]Opus ctx 40%", bar(40))
-
     def test_bar_marks_providers_without_login(self):
         usage = {"providers": [{"agent": "codex", "tokens": 0, "cost_usd": 0.0, "logged_in": False},
                                {"agent": "claude", "tokens": 10, "cost_usd": 0.0, "logged_in": True}]}
-        bar = L.build_bar({"terminals": []}, None, usage, L.DEFAULT_COLORS)
+        bar = L.build_bar(usage, L.DEFAULT_COLORS)
         self.assertIn("codex#[nostrikethrough] sin login", bar)
         self.assertIn("claude 10", bar)
-
-    def test_claude_costs_for_path_sums_by_model_only_for_that_cwd(self):
-        cwd = "/home/loren/projects/web-wt/demo"
-        enc = L.transcript_dir(cwd).name
-        data = {"sessions": [
-            {"projectPath": enc, "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 1.0},
-                                                     {"modelName": "claude-sonnet-5-5", "cost": 0.25}]},
-            {"projectPath": enc, "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 0.5}]},
-            {"projectPath": "-otra-carpeta", "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 9}]},
-        ]}
-        self.assertEqual(L.claude_costs_for_path(data, cwd), {"opus": 1.5, "sonnet": 0.25})
-        self.assertEqual(L.claude_costs_for_path(None, cwd), {})
-
-    def test_cost_since(self):
-        data = {"sessions": [{"lastActivity": "2026-11-05T18:00:00Z", "totalCost": 0.1},
-                             {"lastActivity": "2026-11-05T10:00:00Z", "totalCost": 5},
-                             {"lastActivity": "2026-11-05T19:00:00Z", "costUSD": 0.2}]}
-        self.assertAlmostEqual(L.cost_since(data, "2026-11-05T17:00:00"), 0.3)
-
-    def test_session_cost_text_marks_approx(self):
-        txt = L.session_cost_text({"opus": (1.234, True), "agy": (0.06, False), "codex": (0.0, False)},
-                                  L.DEFAULT_COLORS)
-        self.assertIn("sesión $1.29", txt)
-        self.assertIn("opus1.23 · agy≈0.06", txt)
-        self.assertNotIn("codex", txt)
 
     def test_opus_context_ignores_transcripts_before_clear(self):
         import os
@@ -124,15 +61,31 @@ class TestCaolg(unittest.TestCase):
                 if old_home is not None:
                     os.environ["HOME"] = old_home
 
+    def test_build_bar_only_today_usage(self):
+        usage = {"providers": [{"agent": "claude", "tokens": 25_880_496, "cost_usd": 13.65},
+                               {"agent": "antigravity", "tokens": 76_700, "cost_usd": 0.0}]}
+        bar = L.build_bar(usage, L.DEFAULT_COLORS)
+        self.assertIn("hoy: claude 25.9M $13.65 · agy 76.7k", bar)
+        for gone in ("agentes", "ctx", "sesión"):
+            self.assertNotIn(gone, bar)
+        self.assertIn("usage n/d", L.build_bar(None, L.DEFAULT_COLORS))
+
+    def test_display_model(self):
+        self.assertEqual(L.display_model({"model": "opus", "provider": "claude_code"}), "Opus 5.5")
+        self.assertEqual(L.display_model({"model": "claude-sonnet-5-5"}), "Sonnet 5.5")
+        self.assertEqual(L.display_model({"model": None, "provider": "codex"}), "codex")
+
     def test_pane_label(self):
-        self.assertEqual(L.pane_label({"id": "a"}, "a"), "Opus · líder")
-        self.assertEqual(L.pane_label({"id": "b", "provider": "codex", "agent_profile": "codex-dev"}, "a"),
-                         "codex-dev · codex")
+        self.assertEqual(L.pane_label({"id": "a", "model": "opus"}, "a"), "Opus 5.5 · líder")
+        self.assertEqual(L.pane_label({"id": "b", "provider": "claude_code", "model": "sonnet",
+                                       "description": "front"}, "a"), "Sonnet 5.5 · front")
+        self.assertEqual(L.pane_label({"id": "c", "provider": "codex", "agent_profile": "codex-dev"}, "a"),
+                         "codex · codex-dev")
 
     def test_pane_label_role_override(self):
         term = {"id": "b", "provider": "codex", "description": "front"}
-        self.assertEqual(L.pane_label(term, "a", "reviewer"), "reviewer · codex")
-        self.assertEqual(L.pane_label(term, "a", None), "front · codex")
+        self.assertEqual(L.pane_label(term, "a", "reviewer"), "codex · reviewer")
+        self.assertEqual(L.pane_label(term, "a", None), "codex · front")
 
     def test_tab_keys(self):
         self.assertEqual([L.tab_key(i) for i in range(10)], ["2", "3", "4", "5", "6", "7", "8", "9", "0", ""])
@@ -171,12 +124,6 @@ class TestCaolg(unittest.TestCase):
         self.assertEqual(L.tab_color("green", colors), colors["green"])
         self.assertEqual(L.tab_color("#123456", colors), "#123456")
         self.assertEqual(L.tab_color("", colors), colors["muted"])
-
-    def test_build_bar_uses_tab_colors(self):
-        session = {"terminals": [{"id": "a", "provider": "claude_code"},
-                                 {"id": "b", "provider": "claude_code", "status": "idle", "description": "front"}]}
-        bar = L.build_bar(session, 5, {}, dict(L.DEFAULT_COLORS), tab_colors={"b": "#abcdef"})
-        self.assertIn("#[fg=#abcdef]front", bar)
 
     def test_tab_strip_highlights_visible(self):
         tabs = [{"id": "%1", "label": "front · agy", "color": "#00f"}, {"id": "%2", "label": "zsh", "color": None}]

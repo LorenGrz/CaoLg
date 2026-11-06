@@ -62,47 +62,13 @@ def cached_usage():
         return None
 
 
-# provider de CAO -> agente de ccusage (para el costo por sesión)
-CCUSAGE_AGENT = {"codex": "codex", "antigravity_cli": "antigravity",
-                 "opencode_cli": "opencode", "copilot_cli": "copilot"}
-
-
-def ccusage_sessions(agent, since_day):
-    try:
-        out = subprocess.run(["ccusage", agent, "session", "--json", "--since", since_day],
-                             capture_output=True, text=True, timeout=90)
-        return json.loads(out.stdout)
-    except Exception:
-        return None
-
-
-def session_costs(s, session):
-    """{nombre: (usd, exacto)}: Claude por carpeta (exacto); el resto desde que se abrió la sesión (≈)."""
-    terms = session.get("terminals", [])
-    if not terms:
-        return {}
-    created = tmux("display", "-p", "-t", f"={s}:", "#{session_created}").stdout.strip()
-    start = float(created) if created.isdigit() else time.time()
-    since_day = time.strftime("%Y%m%d", time.localtime(start))
-    since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(start))
-    costs = {}
-    claude = L.claude_costs_for_path(ccusage_sessions("claude", since_day), terms[0].get("working_directory", ""))
-    for model, usd in claude.items():
-        costs[model] = (usd, True)
-    for prov in {t.get("provider") for t in terms[1:]}:
-        agent = CCUSAGE_AGENT.get(prov)
-        if agent:
-            costs[L.provider_short(prov)] = (L.cost_since(ccusage_sessions(agent, since_day), since_iso), False)
-    return costs
-
-
-def paint(s, session, colors, opus_cost=None):
+def paint(s, session, colors):
     """Borde de cada pane y tab de cada ventana con el color de su provider."""
     terms = session.get("terminals", [])
     if not terms:
-        return {}, {}
+        return
     conductor = terms[0]["id"]
-    panes, roles, tab_colors = {}, {}, {}
+    panes = {}
     rows, extra = [], {}
     fmt = "#{pane_id}\t#{window_id}\t#{@cao_terminal}\t#{@caolg_role}\t#{@caolg_color}"
     for line in tmux("list-panes", "-s", "-t", f"={s}", "-F", fmt).stdout.splitlines():
@@ -117,16 +83,12 @@ def paint(s, session, colors, opus_cost=None):
     windows = set(tmux("list-windows", "-t", s, "-F", "#W").stdout.split())
     for t in terms:
         pid, role, ckey = panes.get(t["tmux_window"], (None, "", ""))
-        if role:
-            roles[t["id"]] = role
         label = L.pane_label(t, conductor, role or None)
-        if t["id"] == conductor and opus_cost is not None:
-            label = f"{label} · ${opus_cost:.2f}"
         # Cada worker tiene su color fijo de tab (lo asigna caolg-tabs); Opus, el accent del tema.
         if t["id"] == conductor:
             color = colors["accent"]
         elif ckey:
-            color = tab_colors[t["id"]] = L.tab_color(ckey, colors)
+            color = L.tab_color(ckey, colors)
         else:
             color = L.provider_color(t.get("provider"), colors)
         if pid:
@@ -140,7 +102,6 @@ def paint(s, session, colors, opus_cost=None):
             tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-current-format",
                  f"#[fg={colors['background']},bg={color},bold] #I:{label} ")
     subprocess.run([str(BIN / "caolg-tabs"), s, "strip"], capture_output=True)
-    return roles, tab_colors
 
 
 def tick(s, state):
@@ -149,20 +110,11 @@ def tick(s, state):
         return
     colors = L.load_colors()
     CACHE.mkdir(parents=True, exist_ok=True)
-    costs_file = CACHE / f"{s}.costs.json"
 
     now = time.time()
     if now - state.get("usage_ts", 0) >= USAGE_EVERY:
         state["usage"], state["usage_ts"] = fetch_usage(), now
-        state["costs"] = session_costs(s, session)
-        costs_file.write_text(json.dumps(state["costs"]))
-    if "costs" not in state:  # --once: reusar el último cálculo
-        try:
-            state["costs"] = {k: tuple(v) for k, v in json.loads(costs_file.read_text()).items()}
-        except (OSError, json.JSONDecodeError):
-            state["costs"] = {}
-    opus = state["costs"].get("opus")
-    roles, tab_colors = paint(s, session, colors, opus[0] if opus else None)
+    paint(s, session, colors)
 
     terms = session.get("terminals", [])
     ctx_pct = None
@@ -175,7 +127,7 @@ def tick(s, state):
 
     usage = state.get("usage") or cached_usage()
     (CACHE / f"{s}.bar").write_text(
-        L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT, state["costs"], roles, tab_colors))
+        L.build_bar(usage, colors))
 
     idle = terms and terms[0].get("status") in ("idle", "completed")
     if (CLEAR_AT and ctx_pct is not None and ctx_pct >= CLEAR_AT and idle
@@ -191,7 +143,7 @@ def main():
     s = sys.argv[1]
     state = {}
     if "--once" in sys.argv:
-        state["usage_ts"] = time.time()  # --once no recalcula usage ni costos (lento); solo repinta
+        state["usage_ts"] = time.time()  # --once no recalcula usage (lento); solo repinta
         tick(s, state)
         return
     # Un solo watcher por sesión: si ya hay uno (relanzamiento), este se va. Dos watchers duplicaban

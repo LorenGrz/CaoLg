@@ -47,11 +47,11 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 │                        ├─ back · codex ────────┤
 │                        │                       │
 └────────────────────────┴───────────────────────┘
- agentes: front · agy● back · codex⚠ │ Opus ctx 6% │ claude 49.1M $23.59 · codex 0 · agy 76.7k · …
+ hoy: claude 49.1M $23.59 · codex 0 · agy 76.7k · …
 ```
 
 - Opus fijo en la mitad izquierda (50%); la mitad derecha muestra **un solo** agente o terminal por vez (tabs, `bin/caolg-tabs`). Los demás quedan estacionados en una ventana oculta y se traen con `Alt+2..9`/`Alt+0`. Cada tab nueva toma un color distinto (naranja, verde, azul, magenta, cyan, amarillo, rojo, en ronda) y lo conserva aunque la muevas; el borde superior lista las tabs con su tecla.
-- Línea 2: agentes con estado (● trabajando, ○ libre, ⚠ te necesita, ✗ error, ◌ desconocido), contexto de Opus y usage del día. Se actualiza cada 10 s.
+- Línea 2: solo el uso de hoy por CLI (`hoy: claude … · agy …`). Contexto y gasto de cada agente los muestra su propia statusline, abajo de su pane. El borde de cada pane dice solo `<modelo> · <nombre>` (`Opus 5.5 · líder`, `Sonnet 5.5 · front`). Se actualiza cada 10 s.
 - Colores del tema actual de Omarchy; al cambiar de tema se recolorean las sesiones abiertas.
 
 ### Atajos (solo dentro de sesiones `cao-*`; afuera siguen como en tu tmux.conf)
