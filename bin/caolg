@@ -33,6 +33,13 @@ from_cwd() {
 
 launch() {  # $1 = here|open
   if tmux has-session -t "=cao-$slug" 2>/dev/null; then
+    # Sesión de CAO que no abrió caolg (sin layout, barra ni saludo): no adjuntarse en silencio.
+    if [[ -z "$(tmux show -qv -t "=cao-$slug:" @caolg_wt)" ]]; then
+      echo "$me: cao-$slug es una sesión de CAO que no abrió caolg (sin layout, barra ni saludo)." >&2
+      echo "  Cerrala con:  cao shutdown --session cao-$slug   y volvé a correr: $me" >&2
+      echo "  O entrá igual: tmux attach -t =cao-$slug" >&2
+      exit 1
+    fi
     if [[ "$1" == open ]]; then exec cao-open "$target" "$slug"
     elif [[ -n "${TMUX:-}" ]]; then exec tmux switch-client -t "=cao-$slug"
     else exec tmux attach -t "=cao-$slug"; fi
