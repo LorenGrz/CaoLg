@@ -79,6 +79,7 @@ Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra n
 ### Cómo trabaja el líder
 
 - Tiene los mismos MCP que tu Claude (Atlassian/Jira, GitHub, Slack, Gmail, Drive, plugins…), así que puede leer tickets o cargarlos sin abrir un worker; escribir ahí va solo con tu OK. Para eso los perfiles de Claude no definen `mcpServers` y `cao-mcp-server` se registra con scope de usuario (`bin/caolg-mcp`, ADR 0004).
+- Cada worker trabaja en la carpeta de su rol (`Carpeta:` en el `.md` del rol): front y back en la de su repo, con la rama de la tarea sacada de la base del rol (`origin/dev`); reviewer en la raíz. Sin worktrees aparte salvo para trabajo en paralelo y preguntando. Si la carpeta tiene cambios sin commitear, el líder frena y te pregunta. ADR 0005.
 - Los workers de Claude arrancan en **auto mode** (`permissionMode: auto`) y solo ven `send_message`: le devuelven el resultado al líder que les asignó la tarea, no se hablan entre sí ni abren agentes. Un Claude que abras a mano fuera de CAO ve ese MCP vacío.
 - Al abrir un proyecto responde una línea (carpeta, rama, roles) sin leer nada; solo si no hay **roles de la carpeta** lee lo justo del repo y los crea en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
 - En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/` (excluido de git) y te dice en qué `Alt+N` quedó.

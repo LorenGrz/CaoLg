@@ -5,7 +5,8 @@ CAO lanza Claude con --strict-mcp-config cuando el perfil define mcpServers, y e
 conectores de claude.ai y plugins. Por eso los perfiles de Claude no definen mcpServers e install.sh/cao-wt
 registran este script como "cao-mcp-server" (claude mcp add -s user). Ver ADR 0004.
 
-- Líder (terminal de CAO con perfil supervisor): el cao-mcp-server de CAO completo.
+- Líder (terminal de CAO con perfil supervisor): el cao-mcp-server de CAO completo, con working_directory
+  habilitado en assign/handoff.
 - Worker (cualquier otra terminal de CAO): el mismo servidor detrás de un filtro que solo deja ver
   send_message, sin receiver_id: el mensaje va siempre al líder que le asignó la tarea. Los workers no
   se hablan entre sí ni abren agentes.
@@ -161,6 +162,8 @@ def main():
     server = real_server()
     profile = cao_profile(tid) if re.fullmatch(r"[0-9a-f]{8}", tid) and server else None
     if profile == "supervisor":
+        # assign/handoff con working_directory: cada worker arranca en la carpeta de su rol (ADR 0005).
+        os.environ["CAO_ENABLE_WORKING_DIRECTORY"] = "true"
         os.execv(server, [server, *sys.argv[1:]])
     elif profile:
         worker_proxy(server)
