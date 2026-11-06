@@ -1,4 +1,4 @@
-# 0004 — El líder usa los MCP de Loren (sin --strict-mcp-config)
+# 0004 — Los agentes de Claude usan los MCP de Loren (sin --strict-mcp-config)
 
 - Estado: aceptada (2026-11-06)
 
@@ -9,8 +9,11 @@ Si un perfil define `mcpServers`, CAO lanza Claude con `--mcp-config <solo esos>
 ## Decisión
 
 - `profiles/supervisor.md` no define `mcpServers`, y CAO deja de agregar `--strict-mcp-config`. El líder hereda los mismos MCP que un Claude abierto a mano, con los logins que ya existen.
-- `bin/cao-wt` registra `cao-mcp-server` con scope local en la carpeta del líder (`claude mcp add -s local`), apuntando a `bin/caolg-mcp`. Claude le pasa el entorno al servidor, incluido `CAO_TERMINAL_ID`.
-- `bin/caolg-mcp` ejecuta el `cao-mcp-server` de CAO solo si `CAO_TERMINAL_ID` es de un líder (la API de CAO dice `agent_profile: supervisor`). En los demás casos responde como un MCP vacío: un worker de Claude en la misma carpeta o un Claude abierto a mano ahí no ganan herramientas de CAO ni muestran errores.
+- `install.sh` y `bin/cao-wt` registran `cao-mcp-server` con scope de usuario (`bin/caolg-mcp --ensure`). Claude le pasa el entorno al servidor, incluido `CAO_TERMINAL_ID`.
+- `bin/caolg-mcp` decide según la API de CAO:
+  - **Líder** (`agent_profile: supervisor`): el `cao-mcp-server` completo.
+  - **Worker** (cualquier otra terminal de CAO): el mismo servidor detrás de un filtro que solo expone `send_message` sin `receiver_id`. El mensaje va siempre a quien le asignó la tarea, o sea al líder. Antes los workers de Claude no tenían `cao-mcp-server`, usaban el `SendMessage` propio de Claude y el resultado no le llegaba al líder.
+  - **Fuera de CAO** (un Claude abierto a mano): un MCP vacío, sin herramientas ni errores.
 - El prompt del líder trata cualquier escritura en esos conectores (crear, editar, comentar, enviar, mover) como acción hacia afuera: solo con el OK de Loren sobre el texto exacto.
 
 ## Consecuencias
@@ -21,4 +24,5 @@ Si un perfil define `mcpServers`, CAO lanza Claude con `--mcp-config <solo esos>
 ## Alternativas descartadas
 
 - Lista cerrada de servidores HTTP en el perfil, manteniendo strict: más control y menos contexto, pero cada servidor pide su propio login desde `/mcp`, y Loren prefirió tener todos.
-- `cao-mcp-server` con scope de usuario: aparecería en todas las sesiones de Claude, no solo en las carpetas de caolg.
+- Scope local en la carpeta del líder (primera versión): no les llegaba a los workers que trabajan en otra carpeta. Con scope de usuario aparece en todas las sesiones de Claude, pero fuera de CAO no tiene herramientas.
+- `mcpServers` en `claude-dev`: CAO le pondría strict al worker y perdería los conectores (el worker «jira» los usa).

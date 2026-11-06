@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""caolg-mcp: cao-mcp-server para el líder, registrado con scope local en las carpetas de caolg.
+"""caolg-mcp: cao-mcp-server para los agentes de Claude que lanza CAO, registrado con scope de usuario.
 
-CAO lanza Claude con --strict-mcp-config cuando el perfil define mcpServers, y eso le quita al líder tus
-conectores de claude.ai y plugins. Por eso el perfil supervisor no define mcpServers y cao-wt registra este
-script como "cao-mcp-server" (claude mcp add -s local) en la carpeta del líder (ver ADR 0004).
+CAO lanza Claude con --strict-mcp-config cuando el perfil define mcpServers, y eso le quita al agente los
+conectores de claude.ai y plugins. Por eso los perfiles de Claude no definen mcpServers e install.sh/cao-wt
+registran este script como "cao-mcp-server" (claude mcp add -s user). Ver ADR 0004.
 
-- Con CAO_TERMINAL_ID de un líder (perfil supervisor, según la API de CAO): ejecuta el cao-mcp-server de CAO.
-- Si no (un worker de Claude en la misma carpeta, o un Claude tuyo abierto a mano): MCP vacío, sin
-  herramientas ni errores. Los workers no abren agentes por su cuenta, como antes.
+- Líder (terminal de CAO con perfil supervisor): el cao-mcp-server de CAO completo.
+- Worker (cualquier otra terminal de CAO): el mismo servidor detrás de un filtro que solo deja ver
+  send_message, sin receiver_id: el mensaje va siempre al líder que le asignó la tarea. Los workers no
+  se hablan entre sí ni abren agentes.
+- Fuera de CAO (un Claude tuyo abierto a mano): MCP vacío, sin herramientas ni errores.
 """
 import json
 import os
@@ -20,12 +22,88 @@ from pathlib import Path
 CAO_MCP = Path.home() / ".local/share/uv/tools/cli-agent-orchestrator/bin/cao-mcp-server"
 
 
-def is_leader(tid):
+WORKER_TOOLS = {"send_message"}
+
+
+def cao_profile(tid):
+    """Perfil de la terminal según la API de CAO ('supervisor', 'claude-dev'…), o None si no existe."""
     try:
         with urllib.request.urlopen(f"http://localhost:9889/terminals/{tid}", timeout=3) as r:
-            return json.load(r).get("agent_profile") == "supervisor"
+            t = json.load(r)
+            return (t.get("agent_profile") or "?") if t.get("id") == tid else None
     except Exception:
-        return False
+        return None
+
+
+def filter_tools_list(result):
+    """tools/list para un worker: solo send_message y sin receiver_id (va siempre al líder)."""
+    tools = []
+    for tool in (result or {}).get("tools", []):
+        if tool.get("name") not in WORKER_TOOLS:
+            continue
+        tool = json.loads(json.dumps(tool))
+        props = (tool.get("inputSchema") or {}).get("properties") or {}
+        props.pop("receiver_id", None)
+        req = (tool.get("inputSchema") or {}).get("required")
+        if isinstance(req, list) and "receiver_id" in req:
+            req.remove("receiver_id")
+        tool["description"] = "Mandale un mensaje al líder (el que te asignó la tarea). Es tu único contacto."
+        tools.append(tool)
+    return {**(result or {}), "tools": tools}
+
+
+def filter_call(req):
+    """tools/call de un worker: (req a reenviar, None) o (None, respuesta de error)."""
+    params = req.get("params") or {}
+    if params.get("name") not in WORKER_TOOLS:
+        return None, {"jsonrpc": "2.0", "id": req.get("id"), "result": {"isError": True, "content": [
+            {"type": "text", "text": "Como worker solo podés mandarle mensajes al líder (send_message)."}]}}
+    args = dict(params.get("arguments") or {})
+    args.pop("receiver_id", None)
+    return {**req, "params": {**params, "arguments": args}}, None
+
+
+def worker_proxy(server):
+    import subprocess
+    import threading
+    child = subprocess.Popen([server, *sys.argv[1:]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                             bufsize=1)
+    lists, lock = set(), threading.Lock()
+
+    def out(obj):
+        with lock:
+            sys.stdout.write(json.dumps(obj) + "\n")
+            sys.stdout.flush()
+
+    def from_child():
+        for line in child.stdout:
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "id" in msg and msg["id"] in lists and "result" in msg:
+                lists.discard(msg["id"])
+                msg["result"] = filter_tools_list(msg["result"])
+            out(msg)
+        os._exit(0)
+
+    threading.Thread(target=from_child, daemon=True).start()
+    for line in sys.stdin:
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if req.get("method") == "tools/list":
+            lists.add(req.get("id"))
+        elif req.get("method") == "tools/call":
+            req, err = filter_call(req)
+            if err:
+                out(err)
+                continue
+        child.stdin.write(json.dumps(req) + "\n")
+        child.stdin.flush()
+    child.stdin.close()
+    child.wait()
 
 
 def real_server():
@@ -57,12 +135,37 @@ def noop():
         print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
 
 
+def ensure():
+    """Registra este script como cao-mcp-server de usuario (idempotente). Lo usan install.sh y cao-wt."""
+    import subprocess
+    me = os.path.realpath(__file__)
+    try:
+        out = subprocess.run(["claude", "mcp", "get", "cao-mcp-server"], capture_output=True, text=True,
+                             timeout=60, cwd=str(Path.home())).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 1
+    if me in out and "User config" in out:
+        return 0
+    for scope in ("user", "local"):
+        subprocess.run(["claude", "mcp", "remove", "-s", scope, "cao-mcp-server"], capture_output=True,
+                       timeout=60, cwd=str(Path.home()))
+    r = subprocess.run(["claude", "mcp", "add", "-s", "user", "cao-mcp-server", "--", me],
+                       capture_output=True, timeout=60)
+    return r.returncode
+
+
 def main():
+    if sys.argv[1:] == ["--ensure"]:
+        sys.exit(ensure())
     tid = os.environ.get("CAO_TERMINAL_ID", "")
     server = real_server()
-    if re.fullmatch(r"[0-9a-f]{8}", tid) and server and is_leader(tid):
+    profile = cao_profile(tid) if re.fullmatch(r"[0-9a-f]{8}", tid) and server else None
+    if profile == "supervisor":
         os.execv(server, [server, *sys.argv[1:]])
-    noop()
+    elif profile:
+        worker_proxy(server)
+    else:
+        noop()
 
 
 if __name__ == "__main__":

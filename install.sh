@@ -27,6 +27,8 @@ for p in supervisor claude-dev codex-dev gemini-dev; do
 done
 cao install "$here/profiles/copilot-dev.md" --provider copilot_cli
 cao install "$here/profiles/opencode-dev.md" --provider opencode_cli
+# cao-mcp-server de los agentes de Claude, con scope de usuario (ver bin/caolg-mcp y ADR 0004).
+"$here/bin/caolg-mcp" --ensure || echo "no pude registrar cao-mcp-server en Claude" >&2
 
 # Perfil viejo renombrado a copilot-dev.
 rm -f "$HOME/.copilot/agents/copilot-reviewer.agent.md" \
