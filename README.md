@@ -26,7 +26,7 @@ Detección: `claude auth status`, `codex login status`, `opencode auth list` y e
 
 ```bash
 cd ~/projects/<repo> && claudes                 # repo git: worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
-                                                # (si ya existe, se adjunta; dentro de un worktree de caolg, a esa sesión)
+                                                # (siempre de 0: una sesión vieja sin terminales se cierra; si está abierta en otra terminal, se suma)
 cd ~/cualquier/carpeta && claudes               # sin git: trabaja ahí mismo, como claude (sin worktree), sesión cao-<carpeta>
 claudes open                                    # lo mismo en una terminal nueva
 claudes open ~/projects/<repo> <slug>           # repo y nombre explícitos, terminal nueva
@@ -42,7 +42,7 @@ claudes server                                  # cao-server en primer plano
 
 Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra ni saludo), `claudes` no se adjunta en silencio: te dice cómo cerrarla (`cao shutdown --session cao-<nombre>`) o entrar igual.
 
-**Cerrar la terminal cierra todo, como Claude Code:** Opus guarda su estado en `state.md` (si no está a mitad de una respuesta), se apagan la sesión, los workers y el watcher y, si no queda ninguna sesión `cao-*`, también el `cao-server` que levantó caolg. Quedan los archivos: worktree y rama, roles, `state.md` y transcripts. Para dejarla viva al desconectarte (tmux clásico): `CAOLG_KEEP=1 claudes`.
+**Cerrar la terminal cierra todo, y `claudes` siempre arranca de 0:** se apagan la sesión, los workers y el watcher (sin guardar estado) y, si no queda ninguna sesión `cao-*`, también el `cao-server` que levantó caolg. Si quedó una sesión vieja viva sin terminales, `claudes` la cierra antes de abrir. El estado de Opus solo se guarda con `Alt+c`. Quedan los archivos: worktree y rama, roles, `state.md` y transcripts. Para dejarla viva al desconectarte (tmux clásico): `CAOLG_KEEP=1 claudes`.
 
 ### Layout
 

@@ -7,7 +7,7 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 - `profiles/*.md`: perfiles de CAO (frontmatter YAML + prompt). `supervisor` = líder Opus; workers genéricos por provider (`claude-dev`, `codex-dev`, `gemini-dev`, `opencode-dev`, `copilot-dev`), el rol viene en la tarea.
 - `bin/caolg` (alias `claudes`): entrada única. Sin args usa la carpeta actual: repo git → worktree; sin git → `cao-wt --dir` en la carpeta misma.
 - `bin/cao-wt`, `bin/cao-open`, `bin/cao-ls`, `bin/cao-usage`: worktree + lanzamiento, terminal por proyecto, sesiones, usage.
-- `bin/caolg-close`: hook `client-detached`; al cerrar la última terminal guarda estado, cierra sesión/watcher y apaga el cao-server propio (pidfile).
+- `bin/caolg-close`: hook `client-detached` y paso previo de `claudes`/`cao-open`; si la sesión no tiene terminales la cierra (sin guardar estado: siempre se arranca de 0), con su watcher, y apaga el cao-server propio (pidfile).
 - `bin/caolg-mcp`: `cao-mcp-server` de los agentes de Claude (scope de usuario, `--ensure`): completo para el líder (con `working_directory` en assign: cada worker arranca en la `Carpeta:` de su rol, ADR 0005), solo `send_message` al líder para los workers, vacío fuera de CAO. Los perfiles de Claude no definen `mcpServers` para que CAO no use `--strict-mcp-config`. ADR 0004.
 - `bin/caolg-session`: post-lanzamiento (truco de la marca, hooks, tema, atajos, saludo) y luego `caolg-watch`.
 - `bin/caolg-watch`: bordes/tabs por provider con carpeta y rama de cada agente (cwd de la statusline de Claude, `cwd` en `~/.cache/claude/ctx/<id>.json`; si no, `pane_current_path`), línea 2 de la barra (`~/.cache/caolg/<s>.bar`), `/clear` automático.

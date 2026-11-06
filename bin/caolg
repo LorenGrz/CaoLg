@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # caolg (alias: claudes): punto de entrada único.
-#   claudes                              desde la carpeta actual, en esta terminal (si la sesión existe, se adjunta):
+#   claudes                              desde la carpeta actual, en esta terminal, siempre de 0 (una sesión
+#                                          vieja sin terminales se cierra; si está abierta en otra, se suma):
 #                                          repo git -> worktree aislado <repo>-wt/<repo> + sesión cao-<repo>
 #                                          carpeta sin git -> trabaja ahí mismo, como claude, sesión cao-<carpeta>
 #   claudes open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
@@ -32,6 +33,10 @@ from_cwd() {
 }
 
 launch() {  # $1 = here|open
+  if tmux has-session -t "=cao-$slug" 2>/dev/null && [[ -n "$(tmux show -qv -t "=cao-$slug:" @caolg_wt)" ]]; then
+    # Arrancar de 0: una sesión de caolg que quedó viva sin terminales se cierra (sin guardar estado).
+    "$(dirname "$(realpath "$0")")/caolg-close" "cao-$slug" >/dev/null 2>&1 || true
+  fi
   if tmux has-session -t "=cao-$slug" 2>/dev/null; then
     # Sesión de CAO que no abrió caolg (sin layout, barra ni saludo): no adjuntarse en silencio.
     if [[ -z "$(tmux show -qv -t "=cao-$slug:" @caolg_wt)" ]]; then
