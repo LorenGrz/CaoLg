@@ -129,6 +129,61 @@ class TestCaolg(unittest.TestCase):
         self.assertEqual(L.pane_label({"id": "b", "provider": "codex", "agent_profile": "codex-dev"}, "a"),
                          "codex-dev · codex")
 
+    def test_pane_label_role_override(self):
+        term = {"id": "b", "provider": "codex", "description": "front"}
+        self.assertEqual(L.pane_label(term, "a", "reviewer"), "reviewer · codex")
+        self.assertEqual(L.pane_label(term, "a", None), "front · codex")
+
+    def test_tab_keys(self):
+        self.assertEqual([L.tab_key(i) for i in range(10)], ["2", "3", "4", "5", "6", "7", "8", "9", "0", ""])
+        self.assertEqual([L.key_to_pos(k) for k in "1234567890"], [None, 0, 1, 2, 3, 4, 5, 6, 7, 8])
+
+    def test_assign_tabs_appends_new_ones(self):
+        tabs = [{"id": "%1", "tab": 3}, {"id": "%2", "tab": None}, {"id": "%3", "tab": None}]
+        self.assertEqual(L.assign_tabs(tabs), {"%2": 4, "%3": 5})
+        self.assertEqual(L.assign_tabs([{"id": "%9", "tab": None}]), {"%9": 1})
+
+    def test_pick_visible_prefers_newest(self):
+        self.assertIsNone(L.pick_visible([]))
+        c = [{"id": "%1", "tab": 1}, {"id": "%2", "tab": 2}]
+        self.assertEqual(L.pick_visible(c), "%2")  # worker nuevo de Opus: aparece aunque mirabas otra
+
+    def test_owner_marks_window_mark_belongs_to_leader_only(self):
+        # Opus (%10) tiene la marca de ventana; %12 es una terminal suelta en la misma ventana: no hereda.
+        rows = [{"id": "%12", "win": "@1", "own": "", "inherited": "sup"},
+                {"id": "%10", "win": "@1", "own": "", "inherited": "sup"},
+                {"id": "%13", "win": "@1", "own": "w1", "inherited": "sup"},
+                {"id": "%20", "win": "@2", "own": "", "inherited": "w2"},
+                {"id": "%21", "win": "@3", "own": "", "inherited": ""}]
+        self.assertEqual(L.owner_marks(rows, "%10"), {"%10": "sup", "%13": "w1", "%20": "w2"})
+
+    def test_owner_marks_without_leader_uses_first_pane(self):
+        rows = [{"id": "%1", "win": "@1", "own": "", "inherited": "sup"},
+                {"id": "%2", "win": "@1", "own": "", "inherited": "sup"}]
+        self.assertEqual(L.owner_marks(rows), {"%1": "sup"})
+
+    def test_tab_colors_rotate_and_follow_theme(self):
+        keys = [L.tab_color_key(n) for n in range(1, 9)]
+        self.assertEqual(len(set(keys[:7])), 7)  # 7 tabs seguidas, 7 colores distintos
+        self.assertEqual(keys[7], keys[0])
+        self.assertNotIn("accent", keys)  # reservado para Opus
+        colors = dict(L.DEFAULT_COLORS)
+        self.assertEqual(L.tab_color("green", colors), colors["green"])
+        self.assertEqual(L.tab_color("#123456", colors), "#123456")
+        self.assertEqual(L.tab_color("", colors), colors["muted"])
+
+    def test_build_bar_uses_tab_colors(self):
+        session = {"terminals": [{"id": "a", "provider": "claude_code"},
+                                 {"id": "b", "provider": "claude_code", "status": "idle", "description": "front"}]}
+        bar = L.build_bar(session, 5, {}, dict(L.DEFAULT_COLORS), tab_colors={"b": "#abcdef"})
+        self.assertIn("#[fg=#abcdef]front", bar)
+
+    def test_tab_strip_highlights_visible(self):
+        tabs = [{"id": "%1", "label": "front · agy", "color": "#00f"}, {"id": "%2", "label": "zsh", "color": None}]
+        s = L.tab_strip(tabs, "%2", L.DEFAULT_COLORS)
+        self.assertIn("#[fg=#00f] 2 front · agy ", s)
+        self.assertIn(f"bg={L.DEFAULT_COLORS['muted']},bold] 3 zsh ", s)
+
 
 if __name__ == "__main__":
     unittest.main()

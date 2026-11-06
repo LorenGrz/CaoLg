@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# caolg-layout <session>: Opus grande a la izquierda (55%) y workers apilados a la derecha.
-# Lo corren los hooks de la sesión (after-split-window, pane-exited).
+# caolg-layout <session>: Opus en la mitad izquierda (50%) y una sola tab visible a la derecha (bin/caolg-tabs).
+# Lo corren los hooks de la sesión (after-split-window, pane-exited, after-kill-pane).
 set -uo pipefail
 s=$1
-tmux set -w -t "$s:caolg" main-pane-width 55% 2>/dev/null
-tmux set -w -t "$s:caolg" pane-border-status top 2>/dev/null
-tmux select-layout -t "$s:caolg" main-vertical 2>/dev/null
+here=$(dirname "$(realpath "$0")")
+"$here/caolg-tabs" "$s" sync
 # Repintar bordes cuando CAO ya marcó el pane nuevo (la marca se pone justo después del split).
 sleep 1
-"$(dirname "$(realpath "$0")")/caolg-watch" "$s" --once >/dev/null 2>&1
+"$here/caolg-watch" "$s" --once >/dev/null 2>&1

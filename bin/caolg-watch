@@ -81,7 +81,7 @@ def session_costs(s, session):
     terms = session.get("terminals", [])
     if not terms:
         return {}
-    created = tmux("display", "-p", "-t", f"={s}", "#{session_created}").stdout.strip()
+    created = tmux("display", "-p", "-t", f"={s}:", "#{session_created}").stdout.strip()
     start = float(created) if created.isdigit() else time.time()
     since_day = time.strftime("%Y%m%d", time.localtime(start))
     since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(start))
@@ -100,29 +100,47 @@ def paint(s, session, colors, opus_cost=None):
     """Borde de cada pane y tab de cada ventana con el color de su provider."""
     terms = session.get("terminals", [])
     if not terms:
-        return
+        return {}, {}
     conductor = terms[0]["id"]
-    panes = {}
-    for line in tmux("list-panes", "-s", "-t", s, "-F", "#{pane_id}\t#{@cao_terminal}").stdout.splitlines():
-        pid, _, mark = line.partition("\t")
-        if mark:
-            panes[mark] = pid
+    panes, roles, tab_colors = {}, {}, {}
+    rows, extra = [], {}
+    fmt = "#{pane_id}\t#{window_id}\t#{@cao_terminal}\t#{@caolg_role}\t#{@caolg_color}"
+    for line in tmux("list-panes", "-s", "-t", f"={s}", "-F", fmt).stdout.splitlines():
+        pid, win, mark, role, ckey = (line.split("\t") + [""] * 4)[:5]
+        own = tmux("show", "-p", "-qv", "-t", pid, "@cao_terminal").stdout.strip() if mark else ""
+        rows.append({"id": pid, "win": win, "own": own, "inherited": mark})
+        extra[pid] = (role, ckey)
+    # La marca del supervisor es de ventana y se hereda a todos los panes: ver L.owner_marks.
+    lid = tmux("show", "-qv", "-t", f"={s}:", "@caolg_leader").stdout.strip()
+    for pid, mark in L.owner_marks(rows, lid).items():
+        panes[mark] = (pid, *extra[pid])
     windows = set(tmux("list-windows", "-t", s, "-F", "#W").stdout.split())
     for t in terms:
-        label = L.pane_label(t, conductor)
+        pid, role, ckey = panes.get(t["tmux_window"], (None, "", ""))
+        if role:
+            roles[t["id"]] = role
+        label = L.pane_label(t, conductor, role or None)
         if t["id"] == conductor and opus_cost is not None:
             label = f"{label} · ${opus_cost:.2f}"
-        color = colors["accent"] if t["id"] == conductor else L.provider_color(t.get("provider"), colors)
-        pid = panes.get(t["tmux_window"])
+        # Cada worker tiene su color fijo de tab (lo asigna caolg-tabs); Opus, el accent del tema.
+        if t["id"] == conductor:
+            color = colors["accent"]
+        elif ckey:
+            color = tab_colors[t["id"]] = L.tab_color(ckey, colors)
+        else:
+            color = L.provider_color(t.get("provider"), colors)
         if pid:
             tmux("set", "-p", "-t", pid, "@caolg_label", label)
-            tmux("set", "-p", "-t", pid, "pane-border-format",
-                 f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {label} #[default]")
-            tmux("set", "-p", "-t", pid, "pane-active-border-style", f"fg={color}")
+            if t["id"] == conductor:  # las tabs de la derecha las pinta caolg-tabs strip
+                tmux("set", "-p", "-t", pid, "pane-border-format",
+                     f"#{{?pane_active,#[fg={colors['background']}#,bg={color}#,bold],#[fg={color}]}} {label} #[default]")
+                tmux("set", "-p", "-t", pid, "pane-active-border-style", f"fg={color}")
         if t["tmux_window"] in windows:  # worker que no entró como pane: es una tab propia
             tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-format", f"#[fg={color}] #I:{label} ")
             tmux("set", "-w", "-t", f"{s}:{t['tmux_window']}", "window-status-current-format",
                  f"#[fg={colors['background']},bg={color},bold] #I:{label} ")
+    subprocess.run([str(BIN / "caolg-tabs"), s, "strip"], capture_output=True)
+    return roles, tab_colors
 
 
 def tick(s, state):
@@ -144,12 +162,12 @@ def tick(s, state):
         except (OSError, json.JSONDecodeError):
             state["costs"] = {}
     opus = state["costs"].get("opus")
-    paint(s, session, colors, opus[0] if opus else None)
+    roles, tab_colors = paint(s, session, colors, opus[0] if opus else None)
 
     terms = session.get("terminals", [])
     ctx_pct = None
     if terms:
-        cleared = tmux("show", "-v", "-t", f"={s}", "@caolg_cleared_at").stdout.strip()
+        cleared = tmux("show", "-qv", "-t", f"={s}:", "@caolg_cleared_at").stdout.strip()
         since = float(cleared) if cleared.replace(".", "", 1).isdigit() else 0.0
         tokens = L.opus_context_tokens(terms[0].get("working_directory", ""), since)
         if tokens is not None:
@@ -157,7 +175,7 @@ def tick(s, state):
 
     usage = state.get("usage") or cached_usage()
     (CACHE / f"{s}.bar").write_text(
-        L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT, state["costs"]))
+        L.build_bar(session, ctx_pct, usage, colors, CLEAR_AT, state["costs"], roles, tab_colors))
 
     idle = terms and terms[0].get("status") in ("idle", "completed")
     if (CLEAR_AT and ctx_pct is not None and ctx_pct >= CLEAR_AT and idle

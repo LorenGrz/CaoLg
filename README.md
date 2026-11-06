@@ -48,7 +48,7 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
  agentes: front · agy● back · codex⚠ │ Opus ctx 6% │ claude 49.1M $23.59 · codex 0 · agy 76.7k · …
 ```
 
-- Opus a la izquierda (55%); los workers apilados a la derecha, con borde del color de su provider (claude naranja, codex verde, agy azul, opencode magenta, copilot cyan). Si no entran, CAO abre el siguiente como tab arriba.
+- Opus fijo en la mitad izquierda (50%); la mitad derecha muestra **un solo** agente o terminal por vez (tabs, `bin/caolg-tabs`). Los demás quedan estacionados en una ventana oculta y se traen con `Alt+2..9`/`Alt+0`. Cada tab nueva toma un color distinto (naranja, verde, azul, magenta, cyan, amarillo, rojo, en ronda) y lo conserva aunque la muevas; el borde superior lista las tabs con su tecla.
 - Línea 2: agentes con estado (● trabajando, ○ libre, ⚠ te necesita, ✗ error, ◌ desconocido), contexto de Opus y usage del día. Se actualiza cada 10 s.
 - Colores del tema actual de Omarchy; al cambiar de tema se recolorean las sesiones abiertas.
 
@@ -56,10 +56,15 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 
 | Atajo | Acción |
 |---|---|
-| `Alt+1..9` | ir al pane N (Opus es el 1) |
+| `Alt+1` | Opus |
+| `Alt+2..9`, `Alt+0` | traer la tab N a la mitad derecha |
+| `Alt+Enter` | terminal nueva como tab |
+| `Alt+Esc` | cerrar la tab visible (si es agente, vía CAO; Opus no se cierra) |
+| `Alt+Shift+←/→` | mover la tab visible |
+| `Alt+i` | cambiar la identidad (rol) del agente de la tab |
 | `Alt+z` | zoom del pane |
 | `Alt+c` | `/clear` de Opus con resumen (guarda estado, limpia, lo relee) |
-| `Alt+←/→` | tabs (ventanas) |
+| `Alt+←/→` | tab anterior / siguiente |
 | `Alt+↑/↓` | otro proyecto (sesión) |
 
 ### Cómo trabaja el líder

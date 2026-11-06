@@ -8,8 +8,8 @@ mkdir -p ~/.cache/caolg
 exec 9>~/.cache/caolg/"$s".clear.lock
 flock -n 9 || { tmux display -t "$s" "caolg: ya hay un /clear en curso"; exit 0; }
 
-state=$(tmux show -v -t "=$s" @caolg_state 2>/dev/null)
-roles=$(tmux show -v -t "=$s" @caolg_roles 2>/dev/null)
+state=$(tmux show -v -t "=$s:" @caolg_state 2>/dev/null)
+roles=$(tmux show -v -t "=$s:" @caolg_roles 2>/dev/null)
 [[ -n "$state" ]] || { tmux display -t "$s" "caolg: la sesión no tiene @caolg_state"; exit 1; }
 mkdir -p "$(dirname "$state")"
 
@@ -28,7 +28,7 @@ sleep 0.5
 tmux send-keys -t "$pane" Enter
 # Desde acá el contexto se mide solo en transcripts nuevos: evita que el /clear automático
 # se vuelva a disparar mirando el transcript viejo.
-tmux set -t "=$s" @caolg_cleared_at "$(date +%s)"
+tmux set -t "=$s:" @caolg_cleared_at "$(date +%s)"
 sleep 3
 
 list=$(ls "$roles" 2>/dev/null | sed -n 's/\.md$//p' | paste -sd, - | sed 's/,/, /g')

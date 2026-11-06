@@ -146,15 +146,104 @@ def human(n):
     return str(n)
 
 
-def pane_label(term, conductor_id):
-    """Texto del borde del pane: 'Opus · líder' o '<rol> · <provider>'."""
+def pane_label(term, conductor_id, role=None):
+    """Texto del borde del pane: 'Opus · líder' o '<rol> · <provider>'. `role` pisa el de CAO (Alt+i)."""
     if term["id"] == conductor_id:
         return "Opus · líder"
-    role = term.get("description") or term.get("agent_profile") or "?"
+    role = role or term.get("description") or term.get("agent_profile") or "?"
     return f"{role} · {provider_short(term.get('provider'))}"
 
 
-def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None):
+# ── Tabs de la mitad derecha (bin/caolg-tabs) ──────────────────────────────
+
+def tab_key(pos):
+    """Tecla Alt de la tab en la posición `pos` (0 = primera tab): Alt+2..9 y Alt+0. Más allá, sin tecla."""
+    return str(pos + 2) if pos < 8 else ("0" if pos == 8 else "")
+
+
+def key_to_pos(key):
+    """Inversa de tab_key: '2' -> 0 … '9' -> 7, '0' -> 8. '1' (Opus) o inválida -> None."""
+    if key == "0":
+        return 8
+    return int(key) - 2 if key.isdigit() and 2 <= int(key) <= 9 else None
+
+
+def assign_tabs(tabs):
+    """Numera las tabs que no tienen número (las nuevas van al final, en el orden dado).
+    tabs: [{'id', 'tab': int|None}]. Devuelve {id: número} solo de las nuevas."""
+    nxt = max((t["tab"] for t in tabs if t["tab"] is not None), default=0) + 1
+    new = {}
+    for t in tabs:
+        if t["tab"] is None:
+            new[t["id"]] = nxt
+            nxt += 1
+    return new
+
+
+# Cada tab nueva toma el siguiente color (por número de tab), así dos workers del mismo provider no se confunden.
+# "accent" queda reservado para Opus.
+TAB_PALETTE = ("orange", "green", "blue", "magenta", "cyan", "yellow", "red")
+
+
+def tab_color_key(n):
+    """Clave de color (del tema) para la tab número `n` (1, 2, 3…): recorre TAB_PALETTE en ronda.
+    Se guarda la clave y no el hex para que siga al tema de Omarchy."""
+    return TAB_PALETTE[(max(n, 1) - 1) % len(TAB_PALETTE)]
+
+
+def tab_color(key, colors):
+    """Hex de una clave de TAB_PALETTE (o un hex suelto de sesiones viejas)."""
+    if key and key.startswith("#"):
+        return key
+    return colors.get(key or "", colors["muted"])
+
+
+def owner_marks(rows, leader=None):
+    """A qué pane pertenece cada marca de CAO (@cao_terminal / @cao_terminal_id).
+
+    CAO marca al supervisor con una opción de VENTANA y a los workers en panes con una de PANE. En los
+    formatos de tmux la de ventana se hereda a todos los panes, así que una terminal suelta en la ventana
+    de Opus "parece" Opus (y cerrarla con Alt+Esc borraba a Opus vía CAO). Esto lo desambigua:
+    rows: [{'id', 'win', 'own', 'inherited'}] en orden de pane_index ('own' = valor propio del pane).
+    La marca de ventana es del líder si está en esa ventana; si no, del primer pane de la ventana.
+    Devuelve {pane_id: marca} solo de los panes que la tienen de verdad."""
+    out, taken = {}, set()
+    for r in rows:
+        if r.get("own"):
+            out[r["id"]] = r["own"]
+    for r in rows:
+        mark = r.get("inherited")
+        if not mark or r.get("own") or r["win"] in taken:
+            continue
+        in_win = [x for x in rows if x["win"] == r["win"] and not x.get("own")]
+        owner = leader if any(x["id"] == leader for x in in_win) else in_win[0]["id"]
+        out[owner] = mark
+        taken.add(r["win"])
+    return out
+
+
+def pick_visible(candidates):
+    """Entre las tabs que quedaron en la ventana caolg, cuál se ve: la más nueva (número más alto).
+    Así una tab recién abierta (Alt+Enter o un worker de Opus) aparece al toque."""
+    return max(candidates, key=lambda c: c["tab"])["id"] if candidates else None
+
+
+def tab_strip(tabs, visible_id, colors):
+    """Formato tmux del borde superior de la mitad derecha: ' 2 front · agy  3 zsh '.
+    tabs: [{'id', 'label', 'color'}] ya ordenadas. La visible va resaltada con el color de su provider."""
+    parts = []
+    for pos, t in enumerate(tabs):
+        key = tab_key(pos)
+        txt = f" {key} {t['label']} " if key else f" {t['label']} "
+        c = t.get("color") or colors["muted"]
+        if t["id"] == visible_id:
+            parts.append(f"#[fg={colors['background']},bg={c},bold]{txt}#[default]")
+        else:
+            parts.append(f"#[fg={c}]{txt}#[default]")
+    return "".join(parts)
+
+
+def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None, roles=None, tab_colors=None):
     """Línea 2 de la barra: agentes, contexto de Opus y usage (con estilos de tmux).
     El color del contexto es relativo al umbral del /clear automático: amarillo al 75%, rojo al llegar."""
     fg, muted = colors["foreground"], colors["muted"]
@@ -163,8 +252,9 @@ def build_bar(session, ctx_pct, usage, colors, clear_at=30, session_costs=None):
     agents = []
     for t in terms[1:]:
         icon = STATUS_ICON.get(t.get("status"), "?")
-        c = colors["red"] if t.get("status") == "error" else provider_color(t.get("provider"), colors)
-        agents.append(f"#[fg={c}]{pane_label(t, conductor)}{icon}")
+        c = (colors["red"] if t.get("status") == "error" else
+             (tab_colors or {}).get(t["id"]) or provider_color(t.get("provider"), colors))
+        agents.append(f"#[fg={c}]{pane_label(t, conductor, (roles or {}).get(t['id']))}{icon}")
     left = " ".join(agents) if agents else f"#[fg={muted}](sin workers)"
 
     if ctx_pct is None:

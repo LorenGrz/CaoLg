@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""caolg-tabs <session> <cmd> [args]: la mitad derecha de la ventana caolg como tabs.
+
+En la ventana caolg quedan solo dos panes: Opus (izquierda) y la tab visible (derecha). Las otras tabs se
+estacionan en ventanas ocultas "caolg-park" y se traen con swap-pane. CAO las sigue encontrando porque busca
+cada terminal por la marca @cao_terminal del pane en toda la sesión (ver docs/decisions/0003).
+
+Comandos:
+  sync              ordena (lo corren los hooks after-split-window, pane-exited, after-kill-pane)
+  show <tecla>      Alt+N: 1 = Opus, 2..9 y 0 = tabs
+  next | prev       Alt+→ / Alt+←
+  move left|right   Alt+Shift+← / Alt+Shift+→: mueve la tab visible
+  new <cwd>         Alt+Enter: terminal nueva como tab
+  close <pane>      Alt+Esc: cierra la tab (si es un agente, vía CAO)
+  role-menu <pane>  Alt+i: menú para cambiar la identidad del agente de la tab
+  role <pane> <rol> aplica un rol de la carpeta; "role-text <pane>" lee el texto libre de @caolg_role_req
+  strip             repinta el borde con las tabs (lo llama caolg-watch)
+  list              tecla, pane y etiqueta de cada tab (para Opus)
+"""
+import fcntl
+import json
+import os
+import shlex
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(os.path.realpath(__file__)).parent.parent / "lib"))
+import caolg_lib as L  # noqa: E402
+
+API = "http://localhost:9889"
+PARK = "caolg-park"
+SELF = os.path.realpath(__file__)
+FMT = "\t".join(["#{pane_id}", "#{window_id}", "#{window_name}", "#{@caolg_tab}", "#{@caolg_label}",
+                 "#{@caolg_color}", "#{pane_current_command}", "#{@cao_terminal_id}", "#{pane_active}"])
+KEYS = ("id", "win", "wname", "tab", "label", "color", "cmd", "tid", "active")
+SHELLS = {"zsh", "bash", "fish", "sh"}
+
+
+def tmux(*args):
+    return subprocess.run(["tmux", *args], capture_output=True, text=True)
+
+
+def msg(s, text):
+    tmux("display", "-t", f"={s}:", f"caolg: {text}")
+
+
+def sopt(s, name):
+    """Opción de sesión. En tmux 3.8 show/set -t esperan un pane: "=s:" (no "=s")."""
+    return tmux("show", "-qv", "-t", f"={s}:", name).stdout.strip()
+
+
+def panes(s):
+    out = []
+    for line in tmux("list-panes", "-s", "-t", f"={s}", "-F", FMT).stdout.splitlines():
+        p = dict(zip(KEYS, line.split("\t")))
+        p["tab"] = int(p["tab"]) if p.get("tab", "").isdigit() else None
+        p["active"] = p.get("active") == "1"
+        # El id de CAO del supervisor es opción de ventana y se hereda: solo sirve el propio del pane.
+        p["inherited"], p["tid"] = p["tid"], ""
+        if p["inherited"]:
+            p["own"] = tmux("show", "-p", "-qv", "-t", p["id"], "@cao_terminal_id").stdout.strip()
+        out.append(p)
+    return out
+
+
+def leader(s, ps):
+    """Pane de Opus: @caolg_leader (lo fija caolg-session). Si falta, el pane de la ventana caolg que corre
+    un agente (no una shell) sin marca propia; si no, el primero de esa ventana (donde CAO lanzó a Opus)."""
+    lid = sopt(s, "@caolg_leader")
+    if not any(p["id"] == lid for p in ps):
+        main = [p for p in ps if p["wname"] == "caolg"]
+        guess = next((p for p in main if not p.get("own") and p["cmd"] not in SHELLS), main[0] if main else None)
+        lid = guess["id"] if guess else None
+        if lid:
+            tmux("set", "-t", f"={s}:", "@caolg_leader", lid)
+    marks = L.owner_marks(ps, lid)
+    for p in ps:
+        p["tid"] = marks.get(p["id"], "")
+    return lid
+
+
+class Tabs:
+    def __init__(self, s):
+        self.s = s
+        self.ps = panes(s)
+        self.lid = leader(s, self.ps)
+        lp = next((p for p in self.ps if p["id"] == self.lid), None)
+        self.win = lp["win"] if lp else None
+        # Tabs: los panes de la ventana caolg (menos Opus) y los estacionados. Otras ventanas no se tocan.
+        self.tabs = [p for p in self.ps if p["id"] != self.lid and (p["win"] == self.win or p["wname"] == PARK)]
+        for pid, n in L.assign_tabs(self.tabs).items():
+            tab = next(t for t in self.tabs if t["id"] == pid)
+            tab["tab"], tab["color"] = n, L.tab_color_key(n)
+            # El color se fija al crear la tab y no cambia al moverla (Alt+Shift+flecha).
+            tmux("set", "-p", "-t", pid, "@caolg_tab", str(n))
+            tmux("set", "-p", "-t", pid, "@caolg_color", tab["color"])
+        self.tabs.sort(key=lambda t: t["tab"])
+
+    def visible(self):
+        return [t for t in self.tabs if t["win"] == self.win]
+
+    def park(self, pid):
+        r = tmux("break-pane", "-d", "-s", pid, "-n", PARK, "-P", "-F", "#{window_id}")
+        wid = r.stdout.strip()
+        if wid:  # ventana oculta: fuera de la barra de tabs de tmux
+            tmux("set", "-w", "-t", wid, "window-status-format", "")
+            tmux("set", "-w", "-t", wid, "window-status-current-format", "")
+
+    def layout(self):
+        if not self.win:
+            return
+        tmux("set", "-w", "-t", self.win, "main-pane-width", "50%")
+        tmux("set", "-w", "-t", self.win, "pane-border-status", "top")
+        tmux("select-layout", "-t", self.win, "main-vertical")
+
+    def sync(self):
+        """Deja Opus + una tab. Si se abrió una nueva, es la que se ve; si se cerró la visible, trae otra."""
+        vis = self.visible()
+        if len(vis) > 1:
+            keep = L.pick_visible(vis)
+            focus = any(t["active"] for t in vis if t["id"] != keep)
+            for t in vis:
+                if t["id"] != keep:
+                    self.park(t["id"])
+            if focus:
+                tmux("select-pane", "-t", keep)
+        elif not vis and self.tabs and self.lid:
+            self.bring(self.tabs[0]["id"], select=False)
+        self.reload()
+        self.layout()
+        self.strip()
+
+    def reload(self):
+        self.__init__(self.s)
+
+    def bring(self, pid, select=True):
+        """Pone la tab `pid` a la derecha de Opus (intercambiándola con la visible)."""
+        vis = self.visible()
+        if vis and vis[0]["id"] != pid:
+            tmux("swap-pane", "-d", "-s", pid, "-t", vis[0]["id"])
+        elif not vis:
+            tmux("join-pane", "-d", "-h", "-l", "50%", "-s", pid, "-t", self.lid)
+        if select:
+            tmux("select-window", "-t", self.win)
+            tmux("select-pane", "-t", pid)
+
+    def strip(self):
+        vis = self.visible()
+        if not vis:
+            return
+        colors = L.load_colors()
+        items = []
+        for t in self.tabs:
+            if not t["color"] or t["color"].startswith("#"):  # tab de antes de los colores fijos
+                t["color"] = L.tab_color_key(t["tab"])
+                tmux("set", "-p", "-t", t["id"], "@caolg_color", t["color"])
+            items.append({"id": t["id"], "label": t["label"] or t["cmd"] or "?",
+                          "color": L.tab_color(t["color"], colors)})
+        c = L.tab_color(vis[0]["color"], colors)
+        tmux("set", "-p", "-t", vis[0]["id"], "pane-border-format", L.tab_strip(items, vis[0]["id"], colors))
+        tmux("set", "-p", "-t", vis[0]["id"], "pane-border-style", f"fg={c}")
+        tmux("set", "-p", "-t", vis[0]["id"], "pane-active-border-style", f"fg={c},bold")
+
+    def pos_of_visible(self):
+        vis = self.visible()
+        return next((i for i, t in enumerate(self.tabs) if vis and t["id"] == vis[0]["id"]), None)
+
+    def show_pos(self, pos):
+        if not self.tabs:
+            msg(self.s, "no hay tabs abiertas (Alt+Enter abre una terminal)")
+            return
+        if pos is None or pos >= len(self.tabs):
+            msg(self.s, f"no hay tab {L.tab_key(pos) if pos is not None else '?'}")
+            return
+        self.bring(self.tabs[pos]["id"])
+        self.reload()
+        self.strip()
+
+
+def cao_delete(tid):
+    req = urllib.request.Request(f"{API}/terminals/{tid}", method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except Exception:
+        return False
+
+
+def cao_input(tid, text):
+    url = f"{API}/terminals/{tid}/input?" + urllib.parse.urlencode({"message": text})
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=30):
+            return True
+    except Exception:
+        return False
+
+
+def target_tab(t, pane):
+    """La tab sobre la que actúa un atajo: el pane enfocado si es una tab; si estás en Opus, la visible."""
+    tab = next((x for x in t.tabs if x["id"] == pane), None)
+    if tab is None:
+        vis = t.visible()
+        tab = vis[0] if vis else None
+    return tab
+
+
+def set_role(s, t, pane, role, text):
+    tab = target_tab(t, pane)
+    if not tab or not tab["tid"]:
+        msg(s, "esta tab es una terminal, no un agente")
+        return
+    if not cao_input(tab["tid"], text):
+        msg(s, "CAO no aceptó el mensaje (¿el agente está ocupado?)")
+        return
+    tmux("set", "-p", "-t", tab["id"], "@caolg_role", role)
+    # Repintar etiqueta (caolg-watch usa @caolg_role) y tabs.
+    subprocess.run([str(Path(SELF).parent / "caolg-watch"), s, "--once"], capture_output=True)
+    msg(s, f"identidad nueva: {role}")
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    s, cmd, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+    if tmux("has-session", "-t", f"={s}").returncode != 0:
+        return
+    # Hooks y atajos pueden dispararse a la vez: uno por sesión.
+    lockdir = Path.home() / ".cache/caolg"
+    lockdir.mkdir(parents=True, exist_ok=True)
+    lock = open(lockdir / f"{s}.tabs.lock", "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    t = Tabs(s)
+    if not t.lid:
+        return
+
+    if cmd == "sync":
+        t.sync()
+    elif cmd == "strip":
+        t.strip()
+    elif cmd == "show":
+        key = args[0] if args else ""
+        if key == "1":
+            tmux("select-window", "-t", t.win)
+            tmux("select-pane", "-t", t.lid)
+        else:
+            t.show_pos(L.key_to_pos(key))
+    elif cmd in ("next", "prev"):
+        cur = t.pos_of_visible()
+        if t.tabs:
+            step = 1 if cmd == "next" else -1
+            t.show_pos(((cur if cur is not None else -step) + step) % len(t.tabs))
+    elif cmd == "move":
+        cur = t.pos_of_visible()
+        other = None if cur is None else cur + (1 if args and args[0] == "right" else -1)
+        if cur is not None and 0 <= other < len(t.tabs):
+            a, b = t.tabs[cur], t.tabs[other]
+            tmux("set", "-p", "-t", a["id"], "@caolg_tab", str(b["tab"]))
+            tmux("set", "-p", "-t", b["id"], "@caolg_tab", str(a["tab"]))
+            t.reload()
+            t.strip()
+    elif cmd == "new":
+        cwd = args[0] if args else os.getcwd()
+        vis = t.visible()
+        tgt = vis[0]["id"] if vis else t.lid
+        # Se suelta el lock antes: el split dispara el hook after-split-window, que corre sync.
+        lock.close()
+        tmux("split-window", "-h", "-t", tgt, "-c", cwd)
+    elif cmd == "close":
+        pane = args[0] if args else ""
+        if pane == t.lid:
+            msg(s, "Opus no se cierra con Alt+Esc (para salir: caolg rm)")
+            return
+        tab = target_tab(t, pane)
+        if not tab:
+            return
+        pos = next(i for i, x in enumerate(t.tabs) if x["id"] == tab["id"])
+        was_visible = tab["win"] == t.win
+        lock.close()
+        if not (tab["tid"] and cao_delete(tab["tid"])):
+            tmux("kill-pane", "-t", tab["id"])
+        lock = open(lockdir / f"{s}.tabs.lock", "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        t = Tabs(s)
+        if was_visible and t.tabs:
+            t.show_pos(min(pos, len(t.tabs) - 1))
+        t.sync()
+    elif cmd == "role-menu":
+        pane = args[0] if args else ""
+        tab = target_tab(t, pane)
+        if not tab or not tab["tid"]:
+            msg(s, "esta tab es una terminal, no un agente")
+            return
+        roles_dir = Path(sopt(s, "@caolg_roles") or "/nonexistent")
+        items = []
+        keys = iter("123456789abdefghjklmnopqrstuvwxyz")
+        for f in sorted(roles_dir.glob("*.md")):
+            run = f"run-shell -b {shlex.quote(f'{SELF} {s} role {tab['id']} {f.stem}')}"
+            items += [f.stem, next(keys, ""), run]
+        prompt = (f"command-prompt -p 'Identidad nueva:' "
+                  f"\"set -p -t {tab['id']} @caolg_role_req '%%' ; "
+                  f"run-shell -b '{SELF} {s} role-text {tab['id']}'\"")
+        items += ["", "Otra (texto libre)…", "o", prompt]
+        title = f"#[align=centre]Identidad de {tab['label'] or tab['cmd']}"
+        tmux("display-menu", "-t", tab["id"], "-T", title, "-x", "R", "-y", "P", *items)
+    elif cmd == "role":
+        pane, role = args[0], args[1]
+        roles_dir = sopt(s, "@caolg_roles")
+        path = Path(roles_dir) / f"{role}.md"
+        text = (f"Cambio de identidad: desde ahora tu rol es «{role}». Leé {path} y seguí esas reglas en lugar "
+                f"de las de tu rol anterior. Si tenías una tarea a medias, frená y avisá. Respondé en una línea "
+                f"confirmando tu rol nuevo y esperá instrucciones.")
+        set_role(s, t, pane, role, text)
+    elif cmd == "role-text":
+        pane = args[0]
+        req = tmux("show", "-p", "-v", "-t", pane, "@caolg_role_req").stdout.strip()
+        if not req:
+            return
+        text = (f"Cambio de identidad: desde ahora {req}. Seguí esto en lugar de tu rol anterior. Si tenías una "
+                f"tarea a medias, frená y avisá. Respondé en una línea confirmando y esperá instrucciones.")
+        short = req if len(req) <= 18 else req[:17] + "…"
+        set_role(s, t, pane, short, text)
+    elif cmd == "list":
+        for pos, x in enumerate(t.tabs):
+            vis = " (visible)" if x["win"] == t.win else ""
+            print(f"Alt+{L.tab_key(pos) or '-'}\t{x['id']}\t{x['label'] or x['cmd']}{vis}")
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

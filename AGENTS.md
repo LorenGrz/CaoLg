@@ -9,7 +9,9 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 - `bin/cao-wt`, `bin/cao-open`, `bin/cao-ls`, `bin/cao-usage`: worktree + lanzamiento, terminal por proyecto, sesiones, usage.
 - `bin/caolg-session`: post-lanzamiento (truco de la marca, hooks, tema, atajos, saludo) y luego `caolg-watch`.
 - `bin/caolg-watch`: bordes/tabs por provider, línea 2 de la barra (`~/.cache/caolg/<s>.bar`), `/clear` automático.
-- `bin/caolg-layout`, `bin/caolg-theme`, `bin/caolg-clear`: layout main-vertical, colores del tema de Omarchy, `/clear` con resumen.
+- `bin/caolg-tabs`: mitad derecha como tabs (Opus 50% fijo + un agente visible; el resto en ventanas ocultas `caolg-park`), color fijo por tab, Alt+N. ADR 0003.
+- `bin/caolg-layout`, `bin/caolg-theme`, `bin/caolg-clear`: hook de layout (llama a `caolg-tabs sync`), colores del tema de Omarchy, `/clear` con resumen.
+- tmux 3.8: opciones de sesión con `-t "=<s>:"` (no `=<s>`). La marca de CAO del supervisor es de ventana y se hereda: resolver con `owner_marks`.
 - `lib/caolg_lib.py`: funciones puras (tema, transcripts, barra). `tests/test_caolg.py`.
 - `tmux/caolg-keys.conf`: atajos que solo actúan en sesiones `cao-*`.
 - `omarchy/50-caolg-theme`: hook `theme-set`.
