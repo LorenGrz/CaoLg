@@ -45,6 +45,9 @@ tmux set -t "$s" @caolg_roles "$roles"
 tmux set-hook -t "$s" after-split-window "run-shell -b '$here/caolg-layout $s'"
 tmux set-hook -t "$s" pane-exited "run-shell -b '$here/caolg-layout $s'"
 tmux set-hook -t "$s" after-kill-pane "run-shell -b '$here/caolg-layout $s'"
+# Cerrar la terminal cierra la sesión, como Claude Code (caolg-close). CAOLG_KEEP=1 la deja viva.
+[[ "${CAOLG_KEEP:-0}" == 1 ]] && tmux set -t "=$s:" @caolg_keep 1
+tmux set-hook -t "$s" client-detached "run-shell -b '$here/caolg-close $s'"
 tmux source-file "$here/../tmux/caolg-keys.conf"
 "$here/caolg-layout" "$s" >/dev/null 2>&1
 "$here/caolg-theme" "$s" >/dev/null 2>&1

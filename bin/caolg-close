@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# caolg-close <session>: al cerrar la última terminal conectada (hook client-detached), cierra todo como
+# Claude Code: Opus guarda su estado, se apaga la sesión (Opus + workers + watcher) y, si no queda ninguna
+# sesión cao-*, el cao-server que levantó caolg. Quedan los archivos: worktree, roles, state.md, transcripts.
+# CAOLG_KEEP=1 al abrir la sesión la deja viva al desconectarse (comportamiento tmux clásico).
+set -uo pipefail
+s=$1
+CACHE=~/.cache/caolg
+mkdir -p "$CACHE"
+
+sleep 1  # dar tiempo a que otra terminal (codes open sobre la misma sesión) siga conectada
+
+# La sesión puede seguir viva (cerrar la terminal solo desconecta tmux) o ya haberla cerrado CAO.
+if tmux has-session -t "=$s" 2>/dev/null; then
+  [[ "$(tmux display -p -t "=$s:" '#{session_attached}')" == 0 ]] || exit 0
+  [[ "$(tmux show -qv -t "=$s:" @caolg_keep)" == 1 ]] && exit 0
+
+  exec 9>"$CACHE/$s.close.lock"
+  flock -n 9 || exit 0
+
+  state=$(tmux show -qv -t "=$s:" @caolg_state)
+  status=$(curl -fsS -m 5 "http://localhost:9889/sessions/$s" 2>/dev/null \
+    | python3 -c 'import sys,json; t=json.load(sys.stdin).get("terminals") or [{}]; print(t[0].get("status",""))' 2>/dev/null)
+  if [[ -n "$state" && "$status" =~ ^(idle|completed)$ ]]; then
+    timeout 130 cao session send "$s" --timeout 120 \
+      "Se cierra la sesión. Sobrescribí $state con el estado actual en markdown (objetivo, decisiones, workers y su tarea, archivos clave, próximos pasos). Si no hubo trabajo nuevo, dejalo como está. Respondé solo LISTO." \
+      >/dev/null 2>&1
+  fi
+  cao shutdown --session "$s" >/dev/null 2>&1
+  tmux kill-session -t "=$s" 2>/dev/null
+else
+  cao shutdown --session "$s" >/dev/null 2>&1   # por si CAO dejó registros de la sesión
+fi
+
+# Limpieza siempre: watcher (puede estar esperando un ccusage largo) y archivos de la barra.
+pkill -f "caolg-watch $s\$" 2>/dev/null
+rm -f "$CACHE/$s".{bar,costs.json}
+
+# Apagar cao-server solo si lo levantó caolg (pidfile) y no queda ninguna sesión cao-*.
+if ! tmux ls -F '#S' 2>/dev/null | grep -q '^cao-'; then
+  pidf="$CACHE/cao-server.pid"
+  if [[ -f "$pidf" ]]; then
+    pid=$(cat "$pidf")
+    if [[ "$pid" =~ ^[0-9]+$ ]] && grep -q cao-server "/proc/$pid/cmdline" 2>/dev/null; then
+      kill "$pid"
+    fi
+    rm -f "$pidf"
+  fi
+fi

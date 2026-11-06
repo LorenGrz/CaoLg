@@ -36,6 +36,8 @@ caolg rm ~/projects/<repo> <slug>     # lo mismo, explícito
 
 `cao-server` se levanta solo si no está corriendo (log en `~/.cache/caolg/cao-server.log`).
 
+**Cerrar la terminal cierra todo, como Claude Code:** Opus guarda su estado en `state.md` (si no está a mitad de una respuesta), se apagan la sesión, los workers y el watcher y, si no queda ninguna sesión `cao-*`, también el `cao-server` que levantó caolg. Quedan los archivos: worktree y rama, roles, `state.md` y transcripts. Para dejarla viva al desconectarte (tmux clásico): `CAOLG_KEEP=1 codes`.
+
 ### Layout
 
 ```

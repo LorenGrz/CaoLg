@@ -57,7 +57,8 @@ if ! curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null; then
   # Levantarlo en segundo plano, independiente de esta terminal (log en ~/.cache/caolg/cao-server.log).
   mkdir -p ~/.cache/caolg
   echo "caolg: levantando cao-server…" >&2
-  setsid -f cao-server >>~/.cache/caolg/cao-server.log 2>&1 </dev/null
+  # pidfile: caolg-close lo apaga cuando se cierra la última sesión (solo si lo levantó caolg).
+  setsid -f bash -c 'echo $$ > ~/.cache/caolg/cao-server.pid; exec cao-server' >>~/.cache/caolg/cao-server.log 2>&1 </dev/null
   for _ in $(seq 30); do curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null && break; sleep 1; done
   curl -fsS -o /dev/null http://localhost:9889/health 2>/dev/null \
     || { echo "cao-server no arrancó; mirá ~/.cache/caolg/cao-server.log" >&2; exit 1; }

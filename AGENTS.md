@@ -7,6 +7,7 @@ Configuración personal de CAO (orquestador multi-CLI) con layout tipo IDE en tm
 - `profiles/*.md`: perfiles de CAO (frontmatter YAML + prompt). `supervisor` = líder Opus; workers genéricos por provider (`claude-dev`, `codex-dev`, `gemini-dev`, `opencode-dev`, `copilot-dev`), el rol viene en la tarea.
 - `bin/caolg` (alias `codes`): entrada única. Sin args usa la carpeta actual: repo git → worktree; sin git → `cao-wt --dir` en la carpeta misma.
 - `bin/cao-wt`, `bin/cao-open`, `bin/cao-ls`, `bin/cao-usage`: worktree + lanzamiento, terminal por proyecto, sesiones, usage.
+- `bin/caolg-close`: hook `client-detached`; al cerrar la última terminal guarda estado, cierra sesión/watcher y apaga el cao-server propio (pidfile).
 - `bin/caolg-session`: post-lanzamiento (truco de la marca, hooks, tema, atajos, saludo) y luego `caolg-watch`.
 - `bin/caolg-watch`: bordes/tabs por provider, línea 2 de la barra (`~/.cache/caolg/<s>.bar`), `/clear` automático.
 - `bin/caolg-tabs`: mitad derecha como tabs (Opus 50% fijo + un agente visible; el resto en ventanas ocultas `caolg-park`), color fijo por tab, Alt+N. ADR 0003.
