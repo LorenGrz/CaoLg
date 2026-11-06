@@ -7,8 +7,12 @@ dirflag=""
 [[ $# -ge 2 ]] || { sed -n '2,3p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 target=$(cd "$1" && pwd); slug=$2; profile=${3:-supervisor}
 
+# Arrancar de 0: una sesión de caolg que quedó viva sin terminales se cierra (sin guardar estado).
+if tmux has-session -t "=cao-$slug" 2>/dev/null && [[ -n "$(tmux show -qv -t "=cao-$slug:" @caolg_wt)" ]]; then
+  "$(dirname "$(realpath "$0")")/caolg-close" "cao-$slug" >/dev/null 2>&1 || true
+fi
 if tmux has-session -t "=cao-$slug" 2>/dev/null; then
-  # Ya existe: abrir una terminal adjunta a esa sesión en vez de crear otra.
+  # Sigue abierta en otra terminal: sumar una terminal adjunta a esa sesión en vez de crear otra.
   setsid -f xdg-terminal-exec tmux attach -t "=cao-$slug" >/dev/null 2>&1
 else
   setsid -f xdg-terminal-exec bash -lc \
