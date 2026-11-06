@@ -85,11 +85,15 @@ def git_where(path):
     return top, branch
 
 
-def where_of(term, pane_path):
-    """Carpeta y rama donde trabaja la terminal. Claude: el cwd de su statusline (sigue los `cd` del agente);
-    el resto: la carpeta del proceso del pane; si no, la de CAO."""
-    path = (L.cwd_from_statusline(read_json(CTX_DIR / f"{term['id']}.json")) or pane_path
-            or term.get("working_directory") or "")
+def where_of(term, pane_path, leader=False):
+    """Carpeta y rama donde trabaja la terminal. Líder: siempre su carpeta de lanzamiento (sus `cd` para mirar
+    el worktree de un worker son de paso). Workers de Claude: el cwd de su statusline (sigue el `cd` al
+    worktree de la tarea); el resto: la carpeta del proceso del pane; si no, la de CAO."""
+    if leader:
+        path = term.get("working_directory") or pane_path or ""
+    else:
+        path = (L.cwd_from_statusline(read_json(CTX_DIR / f"{term['id']}.json")) or pane_path
+                or term.get("working_directory") or "")
     if not path or not os.path.isdir(path):
         return L.where_label(path)
     return L.where_label(*git_where(path))
@@ -117,7 +121,7 @@ def paint(s, session, colors, warn=None):
     for t in terms:
         pid, role, ckey, ppath = panes.get(t["tmux_window"], (None, "", "", ""))
         label = L.pane_label(t, conductor, role or None)
-        where = where_of(t, ppath)
+        where = where_of(t, ppath, t["id"] == conductor)
         # Cada worker tiene su color fijo de tab (lo asigna caolg-tabs); Opus, el accent del tema.
         if t["id"] == conductor:
             color = colors["red"] if warn else colors["accent"]
