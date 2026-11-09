@@ -31,6 +31,13 @@ cao install "$here/profiles/copilot-dev.md" --provider copilot_cli
 cao install "$here/profiles/opencode-dev.md" --provider opencode_cli
 # cao-mcp-server de los agentes de Claude, con scope de usuario (ver bin/caolg-mcp y ADR 0004).
 "$here/bin/caolg-mcp" --ensure || echo "no pude registrar cao-mcp-server en Claude" >&2
+# Baseline global de agents-config para OpenCode (opcional; nunca aborta la instalación).
+b="$HOME/projects/agents-config/scripts/gen-cli-baselines.sh"
+if [[ -f "$b" ]]; then
+  bash "$b" --target opencode-cao || echo "aviso: no se pudo generar el baseline de agents-config para OpenCode" >&2
+else
+  echo "(sin agents-config: OpenCode queda sin baseline global)"
+fi
 
 # Perfil viejo renombrado a copilot-dev.
 rm -f "$HOME/.copilot/agents/copilot-reviewer.agent.md" \
