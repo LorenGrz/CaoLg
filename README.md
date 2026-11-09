@@ -13,6 +13,7 @@ CAO 2.5.4 (pineado, Python, `uv tool`), tmux ≥ 3.3, bash + python3 (stdlib) pa
 ```bash
 ./install.sh   # CAO 2.5.4 + modo pane, perfiles, bin/* en ~/.local/bin (+ alias claudes), perfil seguro de Codex,
                # cao-mcp-server de los agentes de Claude, hook de tema
+               # (si existe agents-config, también genera el baseline global de OpenCode; si falla, avisa y sigue)
 caolg server   # opcional: caolg lo levanta solo; reiniciarlo después de install.sh
 ```
 
@@ -71,7 +72,7 @@ Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra n
 | `Alt+Shift+←/→` | mover la tab visible |
 | `Alt+i` | cambiar la identidad (rol) del agente de la tab |
 | `Alt+z` | zoom del pane |
-| `Alt+c` | `/clear` de Opus con resumen (guarda estado, limpia, lo relee) |
+| `Alt+c` | `/clear` de Opus con resumen (guarda el estado y limpia; después no lo relee: espera tu indicación) |
 | `Alt+←/→` | tab anterior / siguiente |
 
 `Alt+↑/↓` (cambiar de proyecto, es decir de sesión) viene de tu `~/.config/tmux/tmux.conf`, no de caolg.
@@ -100,14 +101,14 @@ Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra n
 
 | Worker | Provider | Cómo se contiene |
 |---|---|---|
-| supervisor (líder) | `claude_code` | sin confirmaciones (`--dangerously-skip-permissions`), límites en su prompt, aislado en el worktree |
+| supervisor (líder) | `claude_code` | sin confirmaciones (`--dangerously-skip-permissions`), límites en su prompt, aislado en su worktree |
 | claude-dev | `claude_code` | `permissionMode: auto` (aprueba lo seguro, frena lo riesgoso); MCP limitado a `send_message` al líder |
 | codex-dev | `codex` | `codexProfile: cao-safe` (sin `--yolo`; `approval_policy=never` + `workspace-write`) |
-| copilot-dev | `copilot_cli` | CAO fuerza `--allow-all --autopilot`: solo en el worktree |
-| gemini-dev | `antigravity_cli` | CAO fuerza bypass de permisos: solo en el worktree |
+| copilot-dev | `copilot_cli` | CAO fuerza `--allow-all --autopilot`: solo en la carpeta de su rol (prompt) |
+| gemini-dev | `antigravity_cli` | CAO fuerza bypass de permisos: solo en la carpeta de su rol (prompt) |
 | opencode-dev | `opencode_cli` | permisos allow/deny fijados al instalar (experimental) |
 
-Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. En repos git ningún agente corre en el checkout principal (siempre worktree). En carpetas sin git trabajan en la carpeta misma, sin red de seguridad de git: `claudes` pide confirmación si la carpeta es `~` o `/`.
+Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. El líder corre en su worktree (repo git) y los workers en la carpeta de su rol, sin worktree aparte (ADR 0005): ahí solo los contiene su prompt, sin sandbox. En carpetas sin git se trabaja en la carpeta misma, sin red de seguridad de git: `claudes` pide confirmación si la carpeta es `~` o `/`.
 
 ## Decisiones
 
@@ -118,6 +119,7 @@ Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. En repos git ningún ag
 - [0005](docs/decisions/0005-workers-en-la-carpeta-de-su-rol.md): cada worker trabaja en la carpeta de su rol (front/back en su repo, reviewer en la raíz).
 - [0006](docs/decisions/0006-parche-local-copilot-pane-angosto.md): parche local a CAO para que reconozca a Copilot en un pane angosto.
 - [0007](docs/decisions/0007-agy-sin-cupo-en-la-barra.md): agy sin cupo en la barra (`n/d`): el 0% de Omarchy era el de Claude/GPT.
+- [0008](docs/decisions/0008-push-sin-confirmar.md): commit y push a `main` sin preguntar, solo en este repo (pedido de Loren; reemplaza la confirmación previa del baseline).
 
 ## Limitaciones conocidas
 
