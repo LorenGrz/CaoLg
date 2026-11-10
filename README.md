@@ -82,6 +82,7 @@ Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra n
 
 - Tiene los mismos MCP que tu Claude (Atlassian/Jira, GitHub, Slack, Gmail, Drive, plugins…), así que puede leer tickets o cargarlos sin abrir un worker; escribir ahí va solo con tu OK. Para eso los perfiles de Claude no definen `mcpServers` y `cao-mcp-server` se registra con scope de usuario (`bin/caolg-mcp`, ADR 0004).
 - Cada worker trabaja en la carpeta de su rol (`Carpeta:` en el `.md` del rol): front y back en la de su repo, con la rama de la tarea sacada de la base del rol (`origin/dev`); reviewer en la raíz. Sin worktrees aparte salvo para trabajo en paralelo y preguntando. Si la carpeta tiene cambios sin commitear, el líder frena y te pregunta. ADR 0005.
+- Providers por organización: si el repo del rol es de una org de agents-config cuyo `org.json` tiene `agent_providers` (p. ej. solo `claude_code`), el líder solo abre esos workers (`caolg-providers <carpeta>`). Proyectos personales: todos. ADR 0010.
 - Dos `claudes` en la misma carpeta (ej. un módulo en cada uno): si otra sesión ya tiene un agente en el repo del rol, los workers de esta usan su propio worktree `<repo>-wt/<sesión>` (`caolg-workdir`, automático). Esos worktrees no se borran solos: se reusan con el mismo nombre de sesión y se borran con `git -C <repo> worktree remove <ruta>`. ADR 0009.
 - Los workers de Claude arrancan en **auto mode** (`permissionMode: auto`) y solo ven `send_message`: le devuelven el resultado al líder que les asignó la tarea, no se hablan entre sí ni abren agentes. Un Claude que abras a mano fuera de CAO ve ese MCP vacío.
 - Al abrir un proyecto responde una línea (carpeta, rama, roles) sin leer nada; solo si no hay **roles de la carpeta** lee lo justo del repo y los crea en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
@@ -123,6 +124,7 @@ Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. El líder corre en su w
 - [0007](docs/decisions/0007-agy-sin-cupo-en-la-barra.md): agy sin cupo en la barra (`n/d`): el 0% de Omarchy era el de Claude/GPT.
 - [0008](docs/decisions/0008-push-sin-confirmar.md): commit y push a `main` sin preguntar, solo en este repo (pedido de Loren; reemplaza la confirmación previa del baseline).
 - [0009](docs/decisions/0009-sesiones-paralelas.md): cada `claudes` abre una sesión nueva (`<slug>-2`…) y, si otra sesión ocupa el repo de un rol, sus workers van a un worktree propio (modifica 0005).
+- [0010](docs/decisions/0010-providers-por-org.md): el líder respeta `agent_providers` del `org.json` de la org del repo (`caolg-providers`).
 
 ## Limitaciones conocidas
 
