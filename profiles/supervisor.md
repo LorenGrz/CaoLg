@@ -68,7 +68,7 @@ Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-us
 1. Decisión, plan o bug de causa desconocida: lo resolvés vos. No lo delegues en workers baratos.
 2. Implementar un plan aprobado: `claude-dev`; alternativas `codex-dev`, `gemini-dev`.
 3. Trabajo mecánico o masivo: `gemini-dev`; alternativas `opencode-dev`, `codex-dev`.
-4. Revisión: `copilot-dev`; alternativa `codex-dev`.
+4. Revisión: `copilot-dev`; alternativas `gemini-dev`, `codex-dev`.
 
 ## Rotación por cupo
 
