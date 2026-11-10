@@ -99,6 +99,12 @@ class TestCaolg(unittest.TestCase):
         self.assertAlmostEqual(cp[0]["pct"], 3.3)
         self.assertEqual(L.copilot_limits({}), [])
 
+    def test_should_close_after_terminal_gone(self):
+        self.assertEqual(L.should_close(False, False, 0), (False, 0))  # arranca sin terminal: no cierra
+        self.assertEqual(L.should_close(False, True, 0), (False, 1))   # un chequeo sin terminal
+        self.assertEqual(L.should_close(False, True, 1), (True, 2))    # dos seguidos: cierra
+        self.assertEqual(L.should_close(True, True, 1), (False, 0))    # su terminal sigue viva (en otra cao-*): no cierra
+
     def test_ctx_warning_only_past_limit(self):
         self.assertIsNone(L.ctx_warning(49, 50))
         self.assertEqual(L.ctx_warning(50, 50), "⚠ ctx 50% · Alt+c")
