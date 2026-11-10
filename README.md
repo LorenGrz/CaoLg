@@ -27,7 +27,8 @@ Detección: `claude auth status`, `codex login status`, `opencode auth list` y e
 
 ```bash
 cd ~/projects/<repo> && claudes                 # repo git: worktree <repo>-wt/<repo> + sesión cao-<repo> en esta terminal
-                                                # (siempre de 0: una sesión vieja sin terminales se cierra; si está abierta en otra terminal, se suma)
+                                                # cada vez una sesión nueva, como claude: si cao-<repo> está abierta, abre cao-<repo>-2, -3…
+                                                # (una sesión vieja sin terminales se cierra y se reusa su nombre; volver a una abierta: Alt+↑/↓)
 cd ~/cualquier/carpeta && claudes               # sin git: trabaja ahí mismo, como claude (sin worktree), sesión cao-<carpeta>
 claudes open                                    # lo mismo en una terminal nueva
 claudes open ~/projects/<repo> <slug>           # repo y nombre explícitos, terminal nueva
@@ -81,9 +82,10 @@ Si ya existe una sesión `cao-<nombre>` que no abrió caolg (sin layout, barra n
 
 - Tiene los mismos MCP que tu Claude (Atlassian/Jira, GitHub, Slack, Gmail, Drive, plugins…), así que puede leer tickets o cargarlos sin abrir un worker; escribir ahí va solo con tu OK. Para eso los perfiles de Claude no definen `mcpServers` y `cao-mcp-server` se registra con scope de usuario (`bin/caolg-mcp`, ADR 0004).
 - Cada worker trabaja en la carpeta de su rol (`Carpeta:` en el `.md` del rol): front y back en la de su repo, con la rama de la tarea sacada de la base del rol (`origin/dev`); reviewer en la raíz. Sin worktrees aparte salvo para trabajo en paralelo y preguntando. Si la carpeta tiene cambios sin commitear, el líder frena y te pregunta. ADR 0005.
+- Dos `claudes` en la misma carpeta (ej. un módulo en cada uno): si otra sesión ya tiene un agente en el repo del rol, los workers de esta usan su propio worktree `<repo>-wt/<sesión>` (`caolg-workdir`, automático). Esos worktrees no se borran solos: se reusan con el mismo nombre de sesión y se borran con `git -C <repo> worktree remove <ruta>`. ADR 0009.
 - Los workers de Claude arrancan en **auto mode** (`permissionMode: auto`) y solo ven `send_message`: le devuelven el resultado al líder que les asignó la tarea, no se hablan entre sí ni abren agentes. Un Claude que abras a mano fuera de CAO ve ese MCP vacío.
 - Al abrir un proyecto responde una línea (carpeta, rama, roles) sin leer nada; solo si no hay **roles de la carpeta** lee lo justo del repo y los crea en `~/.local/share/caolg/<repo>/agents/*.md` (front, back, reviewer…).
-- En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/` (excluido de git) y te dice en qué `Alt+N` quedó.
+- En cada tarea elige rol + CLI (por dificultad y cupo, o la que le pidas: "abrilo con agy"), escribe la tarea en `.caolg-tasks/<sesión>/` (excluido de git) y te dice en qué `Alt+N` quedó.
 - **Nunca se limpia solo.** Cuando su contexto pasa `CAOLG_WARN_AT` (default 50%, medido con el % exacto de su statusline), el borde de Opus se pone rojo con `⚠ ctx N% · Alt+c` y aparece un aviso. Con `Alt+c` escribe su estado en `~/.local/share/caolg/<repo>/<slug>/state.md` y se limpia.
 
 ### Variables
@@ -120,6 +122,7 @@ Nunca usar `cao launch --yolo` ni `allowedTools: ["*"]`. El líder corre en su w
 - [0006](docs/decisions/0006-parche-local-copilot-pane-angosto.md): parche local a CAO para que reconozca a Copilot en un pane angosto.
 - [0007](docs/decisions/0007-agy-sin-cupo-en-la-barra.md): agy sin cupo en la barra (`n/d`): el 0% de Omarchy era el de Claude/GPT.
 - [0008](docs/decisions/0008-push-sin-confirmar.md): commit y push a `main` sin preguntar, solo en este repo (pedido de Loren; reemplaza la confirmación previa del baseline).
+- [0009](docs/decisions/0009-sesiones-paralelas.md): cada `claudes` abre una sesión nueva (`<slug>-2`…) y, si otra sesión ocupa el repo de un rol, sus workers van a un worktree propio (modifica 0005).
 
 ## Limitaciones conocidas
 

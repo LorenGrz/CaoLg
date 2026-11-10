@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# caolg-workdir <carpeta> [base]: dónde lanzar al worker de un rol (lo llama el líder antes de assign/handoff).
+# Si un pane de OTRA sesión cao-* está parado dentro de <carpeta> (repo git), devuelve un worktree propio de esta
+# sesión, <carpeta>-wt/<sesión>, desacoplado en [base] (default origin/dev), creado o reusado. Si no, <carpeta>.
+# ADR 0009: dos caolg en la misma carpeta no se cambian la rama entre ellos.
+set -euo pipefail
+[[ $# -ge 1 ]] || { sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+dir=$(cd "$1" && pwd)
+base=${2:-origin/dev}
+me=$(tmux display -p '#S')
+
+git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "$dir"; exit 0; }
+
+busy=$(tmux list-panes -a -F '#{session_name}	#{pane_current_path}' |
+  awk -F'\t' -v me="$me" -v d="$dir" '$1 ~ /^cao-/ && $1 != me && ($2 == d || index($2, d "/") == 1)' | head -1)
+[[ -n "$busy" ]] || { echo "$dir"; exit 0; }
+
+wt="$dir-wt/${me#cao-}"
+if [[ ! -d "$wt" ]]; then
+  git -C "$dir" fetch -q origin >&2 || echo "caolg-workdir: fetch falló, sigo con $base local" >&2
+  git -C "$dir" worktree add -q --detach "$wt" "$base" >&2
+fi
+excl="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+grep -qxF '.caolg-tasks/' "$excl" 2>/dev/null || echo '.caolg-tasks/' >> "$excl"
+echo "$wt"

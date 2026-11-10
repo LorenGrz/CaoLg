@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # caolg (alias: claudes): punto de entrada único.
-#   claudes                              desde la carpeta actual, en esta terminal, siempre de 0 (una sesión
-#                                          vieja sin terminales se cierra; si está abierta en otra, se suma):
-#                                          repo git -> worktree aislado <repo>-wt/<repo> + sesión cao-<repo>
+#   claudes                              desde la carpeta actual, en esta terminal; cada vez una sesión nueva, como
+#                                          claude (si cao-<x> ya está abierta: cao-<x>-2, -3…; volver a una: Alt+↑/↓):
+#                                          repo git -> worktree aislado <repo>-wt/<slug> + sesión cao-<slug>
 #                                          carpeta sin git -> trabaja ahí mismo, como claude, sesión cao-<carpeta>
 #   claudes open [<repo> <slug>]         lo mismo en una terminal nueva (sin args: carpeta actual)
 #   claudes here <repo> <slug> [perfil]  repo y nombre explícitos, en esta terminal
@@ -32,7 +32,18 @@ from_cwd() {
   slug=$(printf '%s' "$slug" | tr -c 'A-Za-z0-9_-' '-')
 }
 
+# Sesión nueva como claude: si cao-<slug> está abierta en alguna terminal, usar <slug>-2, -3… (ADR 0009).
+free_slug() {
+  local base=$slug n=1
+  # Ojo: tmux display sobre una sesión inexistente sale con 0 y vacío; por eso has-session primero.
+  while tmux has-session -t "=cao-$slug" 2>/dev/null \
+    && [[ "$(tmux display -p -t "=cao-$slug:" '#{session_attached}')" != 0 ]]; do
+    n=$((n + 1)); slug="$base-$n"
+  done
+}
+
 launch() {  # $1 = here|open
+  free_slug
   if tmux has-session -t "=cao-$slug" 2>/dev/null && [[ -n "$(tmux show -qv -t "=cao-$slug:" @caolg_wt)" ]]; then
     # Arrancar de 0: una sesión de caolg que quedó viva sin terminales se cierra (sin guardar estado).
     "$(dirname "$(realpath "$0")")/caolg-close" "cao-$slug" >/dev/null 2>&1 || true
