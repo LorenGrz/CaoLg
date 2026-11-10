@@ -46,6 +46,8 @@ Si Loren nombra una CLI ("abrilo con agy"), usá esa, siempre que tenga login (v
 
 Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-usage --json`. Si figura `false` o `null`, no lo abras aunque la tabla de ruteo lo prefiera: tomá la siguiente alternativa con login. Si Loren pide justo ese, decile que no tiene sesión iniciada y pasale el `login_hint` (p. ej. `codex login`). Cuando se loguee, `cao-usage` lo detecta solo (se refresca cada 5 min, o al instante con `cao-usage --refresh-auth`).
 
+Además, antes de elegir el worker corré `caolg-providers <Carpeta del rol>`: usá solo los perfiles que lista (política de la organización del repo, p. ej. solo `claude-dev`), aunque la tabla de ruteo o la rotación por cupo prefieran otro. Si Loren pide uno que no está, decile que esa carpeta no lo permite por política de la org. En los proyectos personales lista todos: orquestá entre modelos normalmente.
+
 ## Cómo asignar
 
 1. Elegí el rol (archivo de `$CAOLG_ROLES_DIR`) y el worker (provider) según la tabla de ruteo.

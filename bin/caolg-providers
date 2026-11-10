@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# caolg-providers <carpeta>: perfiles de worker permitidos ahí, uno por línea (lo llama el líder antes de asignar).
+# Si el remote de la carpeta (o de los repos justo debajo, si no es repo) es de una org de agents-config cuyo
+# org.json define "agent_providers" (providers de CAO, p. ej. claude_code), solo esos; si no, todos. ADR 0010.
+set -euo pipefail
+[[ $# -eq 1 ]] || { sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+dir=$(cd "$1" && pwd)
+profiles="$(dirname "$(realpath "$0")")/../profiles"
+ac=${CAOLG_AGENTS_CONFIG:-$HOME/projects/agents-config}
+
+remotes() {
+  if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$dir" remote get-url origin 2>/dev/null || true
+  else
+    for d in "$dir"/*/; do [[ -e "$d.git" ]] && { git -C "$d" remote get-url origin 2>/dev/null || true; }; done
+  fi
+}
+
+allowed="*"   # "*" = todos; si no, providers separados por espacio (intersección de todas las orgs)
+if [[ -x "$ac/scripts/orgs.sh" ]]; then
+  while IFS= read -r url; do
+    [[ -n "$url" ]] || continue
+    while IFS= read -r org; do
+      [[ -n "$org" ]] || continue
+      list=$(jq -r '.agent_providers // empty | join(" ")' "$ac/organizations/$org/org.json" 2>/dev/null) || continue
+      [[ -n "$list" ]] || continue
+      if [[ "$allowed" == "*" ]]; then allowed=$list
+      else allowed=$(for p in $allowed; do [[ " $list " == *" $p "* ]] && printf '%s ' "$p"; done; true); fi
+    done < <("$ac/scripts/orgs.sh" detect "$url" 2>/dev/null)
+  done < <(remotes)
+fi
+
+for f in "$profiles"/*-dev.md; do
+  p=$(sed -n 's/^provider: *//p' "$f" | head -1)
+  [[ "$allowed" == "*" || " $allowed " == *" $p "* ]] && basename "$f" .md
+done
+true
