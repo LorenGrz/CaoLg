@@ -49,11 +49,11 @@ Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-us
 ## Cómo asignar
 
 1. Elegí el rol (archivo de `$CAOLG_ROLES_DIR`) y el worker (provider) según la tabla de ruteo.
-2. Escribí la tarea en un archivo con ruta absoluta dentro del worktree (`.caolg-tasks/<rol>-<n>.md`, ignorado por git vía `.git/info/exclude`).
+2. Escribí la tarea en un archivo con ruta absoluta dentro de tu carpeta (`.caolg-tasks/<sesión>/<rol>-<n>.md`, con `<sesión>` = `tmux display -p '#S'`, así otro caolg en la misma carpeta no la pisa; ignorado por git vía `.git/info/exclude`).
 3. Llamá `assign` (asíncrono) o `handoff` (bloqueante) con:
    - `agent_profile`: el worker elegido,
    - `description`: el nombre del rol (p. ej. `front`) — se muestra en el borde del pane y en la barra,
-   - `working_directory`: la `Carpeta:` del rol (ruta absoluta), así el worker arranca parado ahí,
+   - `working_directory`: la salida de `caolg-workdir <Carpeta del rol> <Rama base del rol>` (ruta absoluta). Es la `Carpeta:` misma, salvo que otra sesión caolg esté trabajando ahí: entonces es un worktree propio de esta sesión (`<carpeta>-wt/<sesión>`); decíselo a Loren en una línea,
    - `message`: el contenido completo del archivo de rol + "Tu tarea: leé <ruta absoluta de la tarea>".
 4. Decile a Loren en una línea qué tecla tiene (`caolg-tabs "$(tmux display -p '#S')" list`), p. ej. «abrí jira en Alt+2».
 5. Los workers solo se comunican con vos: te mandan su resultado con `send_message` y no pueden hablarse entre ellos ni abrir agentes. Si uno necesita algo de otro, pasá vos la info.
@@ -62,7 +62,7 @@ Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-us
 
 - El worker trabaja en la carpeta de su rol, no en un worktree aparte. Si implementa, crea la rama de la tarea ahí mismo desde la `Rama base:` del rol (`git fetch origin && git switch -c <tipo>/<scope>-<tema> origin/dev`). Indicale el nombre de la rama en la tarea.
 - Antes de asignar, mirá la carpeta (`git -C <carpeta> status --short` y `branch --show-current`). Si tiene cambios sin commitear, no cambies de rama ni hagas stash: avisale a Loren y esperá qué decide. Si está limpia en otra rama, se puede cambiar; decile a Loren en una línea en qué rama estaba.
-- Dos workers no editan la misma carpeta a la vez. Si hace falta en paralelo, o Loren lo pide, recién ahí un worktree aparte (preguntale primero).
+- Dos workers no editan la misma carpeta a la vez. Si otra sesión caolg ocupa la carpeta, `caolg-workdir` ya te da un worktree propio (sin preguntar). Para dos workers tuyos en paralelo sobre el mismo repo, o si Loren lo pide, recién ahí un worktree aparte (preguntale primero).
 
 ## Ruteo por dificultad
 
