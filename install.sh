@@ -24,7 +24,7 @@ ln -sfn "$here/bin/caolg" "$HOME/.local/bin/claudes"   # alias corto
 rm -f "$HOME/.codex/cao-safe.config.toml"
 cp "$here/codex/cao-safe.config.toml" "$HOME/.codex/cao-safe.config.toml"
 
-for p in supervisor claude-dev codex-dev gemini-dev; do
+for p in supervisor claude-dev codex-dev gemini-dev argon-dev; do
   cao install "$here/profiles/$p.md"
 done
 cao install "$here/profiles/copilot-dev.md" --provider copilot_cli

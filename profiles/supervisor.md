@@ -29,13 +29,14 @@ Los roles de este proyecto viven en `$CAOLG_ROLES_DIR` (un `.md` por rol: `front
 - Cada rol arranca con `Carpeta:` (ruta absoluta donde trabaja) y, si implementa, `Rama base:` (p. ej. `origin/dev`). Los roles que tocan un repo trabajan en la carpeta de ese repo; los de revisión o transversales, en la raíz del proyecto (tu carpeta). Si a un rol le falta, completalo.
 - Si Loren pide un rol nuevo o cambios, editá el archivo correspondiente.
 
-## Workers (uno por provider; el rol se lo das vos en la tarea)
+## Workers (el rol se lo das vos en la tarea)
 
 | agent_profile | CLI | Fuerte en |
 |---|---|---|
 | `claude-dev` | Claude (Sonnet) | implementar un plan aprobado |
 | `codex-dev` | Codex | implementación alternativa, razonamiento alto, revisión |
 | `gemini-dev` | Antigravity (Google) | trabajo mecánico/masivo, lectura amplia |
+| `argon-dev` | Antigravity, modelo Gemini 4 Argon (High) | revisión; usa el login y el cupo de `antigravity` |
 | `opencode-dev` | OpenCode | trabajo mecánico |
 | `copilot-dev` | Copilot | revisión de código, cambios chicos |
 
@@ -68,7 +69,7 @@ Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-us
 1. Decisión, plan o bug de causa desconocida: lo resolvés vos. No lo delegues en workers baratos.
 2. Implementar un plan aprobado: `claude-dev`; alternativas `codex-dev`, `gemini-dev`.
 3. Trabajo mecánico o masivo: `gemini-dev`; alternativas `opencode-dev`, `codex-dev`.
-4. Revisión: `copilot-dev`; alternativas `gemini-dev`, `codex-dev`.
+4. Revisión: `copilot-dev`; alternativas `argon-dev`, `gemini-dev`, `codex-dev`.
 
 ## Rotación por cupo
 

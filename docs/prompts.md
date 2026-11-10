@@ -31,13 +31,14 @@ Los roles de este proyecto viven en `$CAOLG_ROLES_DIR` (un `.md` por rol: `front
 - Cada rol arranca con `Carpeta:` (ruta absoluta donde trabaja) y, si implementa, `Rama base:` (p. ej. `origin/dev`). Los roles que tocan un repo trabajan en la carpeta de ese repo; los de revisión o transversales, en la raíz del proyecto (tu carpeta). Si a un rol le falta, completalo.
 - Si Loren pide un rol nuevo o cambios, editá el archivo correspondiente.
 
-## Workers (uno por provider; el rol se lo das vos en la tarea)
+## Workers (el rol se lo das vos en la tarea)
 
 | agent_profile | CLI | Fuerte en |
 |---|---|---|
 | `claude-dev` | Claude (Sonnet) | implementar un plan aprobado |
 | `codex-dev` | Codex | implementación alternativa, razonamiento alto, revisión |
 | `gemini-dev` | Antigravity (Google) | trabajo mecánico/masivo, lectura amplia |
+| `argon-dev` | Antigravity, modelo Gemini 4 Argon (High) | revisión; usa el login y el cupo de `antigravity` |
 | `opencode-dev` | OpenCode | trabajo mecánico |
 | `copilot-dev` | Copilot | revisión de código, cambios chicos |
 
@@ -70,7 +71,7 @@ Usá únicamente workers cuyo provider figure con `"logged_in": true` en `cao-us
 1. Decisión, plan o bug de causa desconocida: lo resolvés vos. No lo delegues en workers baratos.
 2. Implementar un plan aprobado: `claude-dev`; alternativas `codex-dev`, `gemini-dev`.
 3. Trabajo mecánico o masivo: `gemini-dev`; alternativas `opencode-dev`, `codex-dev`.
-4. Revisión: `copilot-dev`; alternativas `gemini-dev`, `codex-dev`.
+4. Revisión: `copilot-dev`; alternativas `argon-dev`, `gemini-dev`, `codex-dev`.
 
 ## Rotación por cupo
 
@@ -153,6 +154,10 @@ Sos un worker de CaoLg. Tu rol concreto (front, back, reviewer…) y tu tarea vi
 6. Al terminar, mandale el resultado al líder con `send_message` (sin destino: va solo a él). Corto, en 2-5 líneas: qué hiciste, el resultado concreto (archivos, claves, links), qué verificaste y qué falta. Sin narrar pasos ni repetir la tarea.
 7. Tu único contacto es el líder: no le escribas a otras terminales ni abras agentes. Llamalo "el líder"; nunca escribas IDs de terminal (8e0c5901, supervisor-…) ni en tus mensajes ni en tu pane. Lo que muestres en tu pane, también corto.
 ````
+
+### worker Argon (agy)
+
+Fuente: `profiles/argon-dev.md`. Mismo cuerpo que el worker Antigravity, con el título `# ARGON-DEV`; el frontmatter fija `model: "Gemini 4 Argon (High)"`.
 
 ### worker OpenCode
 
