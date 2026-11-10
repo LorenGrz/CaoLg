@@ -6,18 +6,18 @@ set -uo pipefail
 s=$1 wt=$2 branch=$3 state=$4 roles=$5
 here=$(dirname "$(realpath "$0")")
 
-for _ in $(seq 60); do tmux has-session -t "$s" 2>/dev/null && break; sleep 1; done
+for _ in $(seq 300); do tmux has-session -t "$s" 2>/dev/null && break; sleep 0.2; done
 tmux has-session -t "$s" 2>/dev/null || exit 1
 
 # Esperar a que CAO termine de inicializar al líder: mientras lo inicializa lo busca por nombre de
 # ventana, y renombrarla antes hace que CAO dé por fallido el arranque y cierre la sesión.
 ready=0
-for _ in $(seq 90); do
+for _ in $(seq 360); do
   st=$(curl -fsS -m 5 "http://localhost:9889/sessions/$s" 2>/dev/null \
        | python3 -c 'import sys,json; t=json.load(sys.stdin).get("terminals") or [{}]; print(t[0].get("status",""))' 2>/dev/null)
   case "$st" in idle|completed|waiting_user_answer) ready=1; break ;; esac
   tmux has-session -t "$s" 2>/dev/null || exit 1
-  sleep 2
+  sleep 0.5
 done
 [[ $ready == 1 ]] || { tmux display -t "$s" "caolg: el líder no quedó listo; no apliqué el layout" 2>/dev/null; exit 1; }
 

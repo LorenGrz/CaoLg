@@ -140,6 +140,15 @@ def ensure():
     """Registra este script como cao-mcp-server de usuario (idempotente). Lo usan install.sh y cao-wt."""
     import subprocess
     me = os.path.realpath(__file__)
+    # Atajo: leer ~/.claude.json directo (~50 ms) en vez de `claude mcp get` (~1.5 s, corre en cada apertura).
+    try:
+        cfg = json.loads((Path.home() / ".claude.json").read_text())
+        user = (cfg.get("mcpServers") or {}).get("cao-mcp-server") or {}
+        local = ((cfg.get("projects") or {}).get(str(Path.home())) or {}).get("mcpServers") or {}
+        if user.get("command") == me and "cao-mcp-server" not in local:
+            return 0
+    except (OSError, ValueError, AttributeError):
+        pass  # formato desconocido: caer al camino lento
     try:
         out = subprocess.run(["claude", "mcp", "get", "cao-mcp-server"], capture_output=True, text=True,
                              timeout=60, cwd=str(Path.home())).stdout
