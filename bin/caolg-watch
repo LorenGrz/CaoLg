@@ -197,8 +197,18 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return
+    own_clients, misses = set(), 0  # pids de las terminales que miraron esta sesión
     while session_alive(s):
         tick(s, state)
+        clients = [ln.split(" ", 1) for ln in tmux("list-clients", "-F", "#{client_pid} #{session_name}").stdout.splitlines()]
+        own_clients |= {pid for pid, sess in clients if sess == s}
+        alive = any(pid in own_clients for pid, _ in clients)
+        close, misses = L.should_close(alive, bool(own_clients), misses)
+        if close:  # la terminal se cerró: caolg-close apaga todo (respeta @caolg_keep)
+            subprocess.run([str(BIN / "caolg-close"), s])
+            if not session_alive(s):
+                break
+            misses = 0
         time.sleep(TICK)
     for suffix in (".bar", ".costs.json"):
         (CACHE / f"{s}{suffix}").unlink(missing_ok=True)

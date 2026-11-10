@@ -129,6 +129,17 @@ def ctx_warning(pct, warn_at):
     return f"⚠ ctx {pct}% · Alt+c"
 
 
+def should_close(own_client_alive, seen_client, misses, limit=2):
+    """(cerrar, misses): tmux no dispara client-detached cuando la terminal se cierra (SIGHUP), así que el
+    watcher cuenta los chequeos en que no queda viva ninguna terminal que haya mirado esta sesión. Antes de la
+    primera terminal no cuenta (la sesión arranca sin cliente); una terminal que pasó a otra sesión con Alt+↑/↓
+    sigue contando como viva."""
+    if own_client_alive or not seen_client:
+        return False, 0
+    misses += 1
+    return misses >= limit, misses
+
+
 def human(n):
     if n is None:
         return "n/d"
