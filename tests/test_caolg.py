@@ -233,11 +233,25 @@ class TestCaolg(unittest.TestCase):
         pat = ns["COPILOT_HINT_BAR_PATTERN"]
         ok = ["autopilot · allow all · / … copilot-dev · copilot fus…",
               "interactive · manual approval · / comm… copilot-dev · copilot fusion",
-              "← open sidebar · interactive · manual approval · / commands · ? help"]
+              "← open sidebar · interactive · manual approval · / commands · ? help",
+              # Copilot 1.0.110 en un pane más angosto: ya no entra el "/ …" (2026-11-13)
+              "autopilot · allow all    copilot-dev · copilot …"]
         for bar in ok:
             self.assertTrue(re.search(pat, bar), bar)
         self.assertFalse(re.search(pat, "autopilot mode is great"))
         self.assertIsNone(P.patch_copilot_hint_bar("otra cosa"))  # CAO cambió: no tocar
+
+    def test_patch_copilot_hint_bar_actualiza_el_parche_viejo(self):
+        viejo = ('COPILOT_HINT_BAR_PATTERN = (\n'
+                 '    r"←.*[·•]\\s*/ commands\\b"\n'
+                 '    # caolg: barra recortada (ADR 0006)\n'
+                 '    r"|^(?:autopilot|interactive|plan)\\s*[·•].*[·•]\\s*/"\n'
+                 ')\n')
+        nuevo = P.patch_copilot_hint_bar(viejo)
+        ns = {}
+        exec(nuevo, ns)
+        self.assertTrue(re.search(ns["COPILOT_HINT_BAR_PATTERN"], "autopilot · allow all    copilot-dev · copilot …"))
+        self.assertEqual(P.patch_copilot_hint_bar(nuevo), nuevo)
 
 
 if __name__ == "__main__":

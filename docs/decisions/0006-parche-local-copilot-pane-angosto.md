@@ -18,6 +18,14 @@ Parche local mínimo: `COPILOT_HINT_BAR_PATTERN` también acepta la barra recort
 "listo" en otra parte de la pantalla. Vive en `lib/cao_patches.py` (puro, con test) y lo aplica `bin/caolg-patch-cao`
 desde `install.sh`: idempotente, y si el archivo de CAO no tiene el formato esperado no toca nada y avisa.
 
+## Actualización 2026-11-13
+
+Copilot 1.0.110 recorta todavía más la barra y ya no entra el `/ …`: `Autopilot · Allow All    copilot-dev · Copilot …`.
+El worker volvió a fallar con el mismo timeout (la pantalla del fallo, pasada por el detector, daba `PROCESSING`).
+El parche ahora acepta cualquier barra que empiece por el modo (`^(?:autopilot|interactive|plan) ·`). Sigue siendo
+seguro porque solo se mira en la fila de abajo de la caja del composer. `caolg-patch-cao` actualiza el parche viejo
+si ya estaba aplicado.
+
 ## Consecuencias
 
 - Hay que reiniciar cao-server para que lo tome (pasa solo al cerrar la última terminal de caolg y volver a abrir).
