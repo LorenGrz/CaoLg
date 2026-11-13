@@ -3,6 +3,11 @@ name: opencode-dev
 description: "Worker OpenCode (experimental): el rol viene en la tarea"
 role: developer
 provider: opencode_cli
+mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: caolg-mcp
+    args: []
 ---
 
 # OPENCODE-DEV

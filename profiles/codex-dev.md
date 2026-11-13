@@ -4,6 +4,11 @@ description: "Worker Codex: el rol viene en la tarea"
 role: developer
 provider: codex
 codexProfile: cao-safe
+mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: caolg-mcp
+    args: []
 ---
 
 # CODEX-DEV
