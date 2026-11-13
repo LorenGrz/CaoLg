@@ -3,6 +3,11 @@ name: argon-dev
 description: "Worker Antigravity con Gemini 4 Argon (High): el rol viene en la tarea"
 role: developer
 provider: antigravity_cli
+mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: caolg-mcp
+    args: []
 model: "Gemini 4 Argon (High)"
 ---
 

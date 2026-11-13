@@ -3,6 +3,11 @@ name: gemini-dev
 description: "Worker Antigravity (Google): el rol viene en la tarea"
 role: developer
 provider: antigravity_cli
+mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: caolg-mcp
+    args: []
 ---
 
 # GEMINI-DEV
